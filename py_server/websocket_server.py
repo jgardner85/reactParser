@@ -179,6 +179,8 @@ async def handle_client(websocket, path):
                         success = save_image_rating(
                             user_id, image_filename, rating, comment, user_name, data
                         )
+
+                        # Send confirmation to the rating user
                         response = {
                             "type": "rating_saved",
                             "success": success,
@@ -188,7 +190,12 @@ async def handle_client(websocket, path):
                             "timestamp": datetime.now().isoformat(),
                         }
                         await websocket.send(json.dumps(response))
-                        # Logging is now handled in save_image_rating function
+
+                        # Broadcast the updated ratings feed to all other connected users
+                        if success:
+                            await broadcast_rating_update(
+                                image_filename, exclude_client=websocket
+                            )
                     else:
                         # Send error response
                         response = {
@@ -225,15 +232,65 @@ async def handle_client(websocket, path):
         logger.info(f"Client {client_id} (User: {user_id}) connection cleaned up")
 
 
-async def broadcast_message(message):
-    """Broadcast a message to all connected clients"""
+async def broadcast_message(message, exclude_client=None):
+    """Broadcast a message to all connected clients, optionally excluding one"""
     if connected_clients:
-        logger.info(f"Broadcasting to {len(connected_clients)} clients: {message}")
-        # Create list to avoid dict changed during iteration
-        clients_list = list(connected_clients.keys())
-        await asyncio.gather(
-            *[client.send(message) for client in clients_list], return_exceptions=True
+        # Create list to avoid dict changed during iteration, excluding specified client
+        clients_list = [
+            client for client in connected_clients.keys() if client != exclude_client
+        ]
+
+        if clients_list:
+            logger.info(
+                f"Broadcasting to {len(clients_list)} clients (excluding sender): {message[:100]}..."
+            )
+            await asyncio.gather(
+                *[client.send(message) for client in clients_list],
+                return_exceptions=True,
+            )
+        else:
+            logger.info("No other clients to broadcast to")
+
+
+async def broadcast_rating_update(image_filename, exclude_client=None):
+    """Broadcast the full ratings feed for an image to all connected clients"""
+    try:
+        # Load the complete ratings data for this image
+        ratings_data = load_image_ratings(image_filename)
+
+        # Create broadcast message with full feed
+        broadcast_data = {
+            "type": "rating_feed_update",
+            "image_filename": image_filename,
+            "total_ratings": ratings_data["total_ratings"],
+            "average_rating": ratings_data["average_rating"],
+            "ratings_feed": ratings_data["ratings_feed"],
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        message = json.dumps(broadcast_data)
+        logger.info(
+            f"Broadcasting rating update for {image_filename} - {ratings_data['total_ratings']} ratings, avg: {ratings_data['average_rating']}"
         )
+
+        # Print full feed to console for debugging
+        print(f"\n=== RATINGS FEED UPDATE: {image_filename} ===")
+        print(f"Total Ratings: {ratings_data['total_ratings']}")
+        print(f"Average Rating: {ratings_data['average_rating']}/5")
+        print("Feed (newest first):")
+        for i, rating in enumerate(ratings_data["ratings_feed"]):
+            print(
+                f"  {i+1}. {rating['user_name']} ({rating['user_id'][:8]}): {rating['rating']}/5"
+            )
+            print(f"     Comment: '{rating['comment']}'")
+            print(f"     Time: {rating['timestamp']}")
+            print()
+        print("=" * 50)
+
+        await broadcast_message(message, exclude_client)
+
+    except Exception as e:
+        logger.error(f"Error broadcasting rating update: {e}")
 
 
 async def periodic_heartbeat():
