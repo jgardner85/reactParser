@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 connected_clients = {}  # websocket -> user_id mapping
 
 
-def get_image_files():
-    """Get list of image files from the pics directory"""
+def get_image_files(offset=0, limit=20):
+    """Get list of image files from the pics directory with pagination"""
     pics_dir = "pics"
     if not os.path.exists(pics_dir):
         return []
@@ -43,8 +43,17 @@ def get_image_files():
         if any(filename.lower().endswith(ext) for ext in image_extensions):
             image_files.append(filename)
 
-    # Limit to first 20 images to prevent memory overload with 246 images
-    return sorted(image_files)[:20]
+    sorted_files = sorted(image_files)
+    total_count = len(sorted_files)
+
+    # Return paginated results with metadata
+    return {
+        "files": sorted_files[offset : offset + limit],
+        "total_count": total_count,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + limit < total_count,
+    }
 
 
 def get_image_ratings_file(image_filename):
@@ -146,16 +155,20 @@ async def handle_client(websocket, path):
 
     # Send image file list immediately after connection
     try:
-        image_files = get_image_files()
+        image_data = get_image_files(0, 20)  # First 20 images
         file_list_message = {
             "type": "file_list",
-            "files": image_files,
+            "files": image_data["files"],
+            "total_count": image_data["total_count"],
+            "offset": image_data["offset"],
+            "limit": image_data["limit"],
+            "has_more": image_data["has_more"],
             "user_id": user_id,
             "timestamp": datetime.now().isoformat(),
         }
         await websocket.send(json.dumps(file_list_message))
         logger.info(
-            f"Sent file list to {client_id} (User: {user_id}): {len(image_files)} images"
+            f"Sent file list to {client_id} (User: {user_id}): {len(image_data['files'])} of {image_data['total_count']} images"
         )
     except Exception as e:
         logger.error(f"Error sending file list to {client_id}: {e}")
@@ -226,6 +239,32 @@ async def handle_client(websocket, path):
                             "timestamp": datetime.now().isoformat(),
                         }
                         await websocket.send(json.dumps(response))
+                elif data.get("type") == "load_more_images":
+                    # Handle request for more images
+                    offset = data.get("offset", 0)
+                    limit = data.get("limit", 20)
+
+                    try:
+                        image_data = get_image_files(offset, limit)
+                        response = {
+                            "type": "more_images",
+                            "files": image_data["files"],
+                            "total_count": image_data["total_count"],
+                            "offset": image_data["offset"],
+                            "limit": image_data["limit"],
+                            "has_more": image_data["has_more"],
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                        await websocket.send(json.dumps(response))
+                        logger.info(
+                            f"Sent more images to {client_id}: {len(image_data['files'])} images (offset {offset})"
+                        )
+                    except Exception as e:
+                        error_response = {
+                            "type": "error",
+                            "message": f"Error loading more images: {str(e)}",
+                        }
+                        await websocket.send(json.dumps(error_response))
                 else:
                     # Echo other messages
                     response = {

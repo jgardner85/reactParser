@@ -33,6 +33,7 @@ import RatingToast from './RatingToast';
 const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage, userName }) => {
     const [selectedImage, setSelectedImage] = useState(null);
     const [images, setImages] = useState([]);
+    const [imageMetadata, setImageMetadata] = useState({ total_count: 0, has_more: false, offset: 0 });
     const [rating, setRating] = useState(0);
     const [comment, setComment] = useState('');
     const [toastOpen, setToastOpen] = useState(false);
@@ -52,8 +53,31 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                 path: `http://${hostname}:8766/pics/${filename}`
             }));
             setImages(imageFiles);
+            setImageMetadata({
+                total_count: lastMessage.total_count,
+                has_more: lastMessage.has_more,
+                offset: lastMessage.offset + lastMessage.files.length
+            });
         }
     }, [lastMessage]);
+
+    // Listen for more images from WebSocket
+    useEffect(() => {
+        if (lastMessage && lastMessage.type === 'more_images') {
+            const hostname = window.location.hostname;
+            const newImageFiles = lastMessage.files.map((filename, index) => ({
+                id: images.length + index + 1,
+                filename: filename,
+                path: `http://${hostname}:8766/pics/${filename}`
+            }));
+            setImages(prev => [...prev, ...newImageFiles]);
+            setImageMetadata({
+                total_count: lastMessage.total_count,
+                has_more: lastMessage.has_more,
+                offset: lastMessage.offset + lastMessage.files.length
+            });
+        }
+    }, [lastMessage, images.length]);
 
     // Listen for rating feed updates from other users
     useEffect(() => {
@@ -173,6 +197,16 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
         return name ? name.charAt(0).toUpperCase() : '?';
     };
 
+    const handleLoadMore = () => {
+        if (sendJsonMessage && isConnected && imageMetadata.has_more) {
+            sendJsonMessage({
+                type: 'load_more_images',
+                offset: imageMetadata.offset,
+                limit: 20
+            });
+        }
+    };
+
     const handleNotificationsOpen = () => {
         setNotificationsOpen(true);
     };
@@ -281,6 +315,20 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                     </Grid>
                 ))}
             </Grid>
+
+            {/* Load More Button */}
+            {imageMetadata.has_more && (
+                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+                    <Button
+                        variant="outlined"
+                        onClick={handleLoadMore}
+                        disabled={!isConnected}
+                        size="large"
+                    >
+                        Load More Images ({images.length} of {imageMetadata.total_count})
+                    </Button>
+                </Box>
+            )}
 
             {/* Full-size Image Dialog with Rating */}
             <Dialog
