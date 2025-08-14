@@ -48,8 +48,10 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
     useEffect(() => {
         addDebugLog(`Dashboard loaded - User: ${userName}`, 'info');
         addDebugLog(`WebSocket connected: ${isConnected}`, isConnected ? 'success' : 'error');
+        addDebugLog(`Connection status: ${connectionStatus}`, 'info');
         addDebugLog(`sendJsonMessage available: ${!!sendJsonMessage}`, !!sendJsonMessage ? 'success' : 'error');
-    }, [userName, isConnected, sendJsonMessage]);
+        addDebugLog(`Current hostname: ${window.location.hostname}`, 'info');
+    }, [userName, isConnected, sendJsonMessage, connectionStatus]);
 
     // Listen for file list from WebSocket
     useEffect(() => {

@@ -97,6 +97,13 @@ const useWebSocket = (url) => {
 
             ws.onclose = (event) => {
                 console.log('WebSocket disconnected:', event);
+                console.log('Close event details:', {
+                    code: event.code,
+                    reason: event.reason,
+                    wasClean: event.wasClean,
+                    type: event.type
+                });
+                console.log('WebSocket URL was:', wsUrl);
                 setReadyState(WebSocket.CLOSED);
                 setConnectionStatus(getConnectionStatus(WebSocket.CLOSED));
 
@@ -112,8 +119,17 @@ const useWebSocket = (url) => {
             };
 
             ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                setConnectionStatus('Error occurred');
+                console.error('WebSocket error occurred:', error);
+                console.error('Error details:', {
+                    type: error.type,
+                    target: error.target,
+                    message: error.message,
+                    code: error.code,
+                    reason: error.reason
+                });
+                console.error('WebSocket state:', ws.readyState);
+                console.error('WebSocket URL was:', wsUrl);
+                setConnectionStatus(`Error: ${error.message || 'Connection failed'}`);
             };
 
             // Cleanup function
@@ -124,6 +140,11 @@ const useWebSocket = (url) => {
             };
         } catch (error) {
             console.error('Error creating WebSocket:', error);
+            console.error('Full error object:', error);
+            console.error('Error stack:', error.stack);
+            console.error('Error name:', error.name);
+            console.error('Error message:', error.message);
+            console.error('WebSocket URL attempted:', wsUrl);
             setConnectionStatus(`Connection error: ${error.message}`);
             setReadyState(WebSocket.CLOSED);
             return;
