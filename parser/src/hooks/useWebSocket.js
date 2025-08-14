@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 const useWebSocket = (url) => {
+    // Use provided URL or auto-detect based on current hostname
+    const wsUrl = url || `ws://${window.location.hostname}:8765`;
     const [socket, setSocket] = useState(null);
     const [lastMessage, setLastMessage] = useState(null);
     const [readyState, setReadyState] = useState(WebSocket.CONNECTING);
@@ -27,11 +29,11 @@ const useWebSocket = (url) => {
     };
 
     useEffect(() => {
-        if (!url) return;
+        if (!wsUrl) return;
 
-        console.log(`Connecting to WebSocket: ${url}`);
+        console.log(`Connecting to WebSocket: ${wsUrl}`);
 
-        const ws = new WebSocket(url);
+        const ws = new WebSocket(wsUrl);
         socketRef.current = ws;
         setSocket(ws);
 
@@ -97,7 +99,7 @@ const useWebSocket = (url) => {
                 ws.close();
             }
         };
-    }, [url]);
+    }, [wsUrl]);
 
     // Function to send messages
     const sendMessage = useCallback((message) => {

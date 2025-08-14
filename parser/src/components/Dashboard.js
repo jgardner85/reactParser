@@ -25,10 +25,11 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
     // Listen for file list from WebSocket
     useEffect(() => {
         if (lastMessage && lastMessage.type === 'file_list') {
+            const hostname = window.location.hostname;
             const imageFiles = lastMessage.files.map((filename, index) => ({
                 id: index + 1,
                 filename: filename,
-                path: `http://localhost:8766/pics/${filename}`
+                path: `http://${hostname}:8766/pics/${filename}`
             }));
             setImages(imageFiles);
         }
@@ -101,11 +102,11 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                         >
                             <CardMedia
                                 component="img"
-                                height="150"
+                                height="100"
                                 image={image.path}
                                 alt={image.filename}
                                 sx={{
-                                    objectFit: 'cover',
+                                    objectFit: 'contain',
                                     width: '100%'
                                 }}
                             />
@@ -145,7 +146,7 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                                 sx={{
                                     width: '100%',
                                     height: 'auto',
-                                    maxHeight: '50vh',
+                                    maxHeight: { xs: '40vh', sm: '50vh' },
                                     objectFit: 'contain',
                                     display: 'block',
                                     margin: '0 auto 20px auto',

@@ -138,14 +138,14 @@ def start_http_server():
             self.send_header("Access-Control-Allow-Origin", "*")
             super().end_headers()
 
-    httpd = socketserver.TCPServer(("", 8766), HTTPHandler)
+    httpd = socketserver.TCPServer(("0.0.0.0", 8766), HTTPHandler)
     logger.info("Starting HTTP server on localhost:8766 to serve images")
     httpd.serve_forever()
 
 
 def main():
     """Start the WebSocket server"""
-    host = "localhost"
+    host = "0.0.0.0"  # Bind to all interfaces
     port = 8765
 
     logger.info(f"Starting WebSocket server on {host}:{port}")

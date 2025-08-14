@@ -18,7 +18,7 @@ function App() {
     isConnected,
     lastMessage,
     sendJsonMessage
-  } = useWebSocket('ws://localhost:8765');
+  } = useWebSocket(); // Let the hook auto-detect the hostname
 
   return (
     <ThemeProvider theme={darkTheme}>
