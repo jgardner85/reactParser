@@ -41,6 +41,15 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
     const [notifications, setNotifications] = useState([]); // Store all notifications
     const [notificationsOpen, setNotificationsOpen] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [debugLogs, setDebugLogs] = useState([]); // Debug console logs
+    const [showDebugConsole, setShowDebugConsole] = useState(true); // Show debug panel
+
+    // Add initial debug info
+    useEffect(() => {
+        addDebugLog(`Dashboard loaded - User: ${userName}`, 'info');
+        addDebugLog(`WebSocket connected: ${isConnected}`, isConnected ? 'success' : 'error');
+        addDebugLog(`sendJsonMessage available: ${!!sendJsonMessage}`, !!sendJsonMessage ? 'success' : 'error');
+    }, [userName, isConnected, sendJsonMessage]);
 
     // Listen for file list from WebSocket
     useEffect(() => {
@@ -58,6 +67,7 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
     // Listen for rating feed updates from other users
     useEffect(() => {
         if (lastMessage && lastMessage.type === 'rating_feed_update') {
+            addDebugLog(`Received rating_feed_update for ${lastMessage.image_filename}`, 'info');
             const feedData = lastMessage;
 
             // Store the ratings feed for this image
@@ -127,6 +137,8 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
     };
 
     const handleSubmitRating = () => {
+        addDebugLog(`Submit rating clicked - Image: ${selectedImage?.filename}, Rating: ${rating}`, 'info');
+
         if (selectedImage && rating > 0) {
             const ratingData = {
                 type: 'image_rating',
@@ -137,8 +149,17 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                 timestamp: new Date().toISOString()
             };
 
-            sendJsonMessage(ratingData);
-            handleCloseDialog();
+            addDebugLog(`Sending rating: ${JSON.stringify(ratingData)}`, 'success');
+
+            if (sendJsonMessage && isConnected) {
+                sendJsonMessage(ratingData);
+                addDebugLog('Rating sent via WebSocket', 'success');
+                handleCloseDialog();
+            } else {
+                addDebugLog(`Cannot send rating - Connected: ${isConnected}, sendJsonMessage: ${!!sendJsonMessage}`, 'error');
+            }
+        } else {
+            addDebugLog(`Cannot submit - Missing data. Image: ${!!selectedImage}, Rating: ${rating}`, 'error');
         }
     };
 
@@ -171,6 +192,16 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
 
     const getAvatarText = (name) => {
         return name ? name.charAt(0).toUpperCase() : '?';
+    };
+
+    const addDebugLog = (message, type = 'info') => {
+        const timestamp = new Date().toLocaleTimeString();
+        setDebugLogs(prev => [{
+            id: Date.now() + Math.random(),
+            timestamp,
+            message,
+            type
+        }, ...prev].slice(0, 20)); // Keep only last 20 logs
     };
 
     const handleNotificationsOpen = () => {
@@ -223,8 +254,54 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
 
     return (
         <Box sx={{ p: 3 }}>
+            {/* Debug Console */}
+            {showDebugConsole && (
+                <Box sx={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bgcolor: 'rgba(0,0,0,0.9)',
+                    color: 'white',
+                    p: 2,
+                    zIndex: 9999,
+                    maxHeight: '200px',
+                    overflow: 'auto',
+                    fontSize: '12px',
+                    fontFamily: 'monospace'
+                }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="h6" sx={{ fontSize: '14px', fontWeight: 'bold' }}>
+                            🐛 Debug Console (iPad Debug Mode)
+                        </Typography>
+                        <Button size="small" onClick={() => setShowDebugConsole(false)} sx={{ color: 'white' }}>
+                            Hide
+                        </Button>
+                    </Box>
+                    <Box sx={{ maxHeight: '150px', overflow: 'auto' }}>
+                        {debugLogs.length === 0 ? (
+                            <Typography sx={{ fontSize: '12px', opacity: 0.7 }}>No debug logs yet...</Typography>
+                        ) : (
+                            debugLogs.map((log) => (
+                                <Box key={log.id} sx={{
+                                    mb: 0.5,
+                                    color: log.type === 'error' ? '#ff6b6b' : log.type === 'success' ? '#51cf66' : '#fff'
+                                }}>
+                                    <Typography component="span" sx={{ fontSize: '10px', opacity: 0.7 }}>
+                                        [{log.timestamp}]
+                                    </Typography>
+                                    <Typography component="span" sx={{ fontSize: '12px', ml: 1 }}>
+                                        {log.message}
+                                    </Typography>
+                                </Box>
+                            ))
+                        )}
+                    </Box>
+                </Box>
+            )}
+
             {/* Header with user name and connection status */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4, mt: showDebugConsole ? 25 : 0 }}>
                 <Box>
                     <Typography variant="h4" component="h1">
                         Welcome, {userName}! 👋
