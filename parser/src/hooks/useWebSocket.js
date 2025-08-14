@@ -57,77 +57,77 @@ const useWebSocket = (url) => {
             setConnectionStatus('Connecting...');
 
             console.log('WebSocket object created successfully');
+
+            ws.onopen = (event) => {
+                console.log('WebSocket connected:', event);
+                setReadyState(WebSocket.OPEN);
+                setConnectionStatus(getConnectionStatus(WebSocket.OPEN));
+
+                // Send initial connection message
+                const initialMessage = {
+                    type: 'connection',
+                    message: 'React client connected',
+                    timestamp: new Date().toISOString()
+                };
+                ws.send(JSON.stringify(initialMessage));
+            };
+
+            ws.onmessage = (event) => {
+                console.log('WebSocket message received:', event.data);
+
+                let messageData;
+                try {
+                    messageData = JSON.parse(event.data);
+                } catch (e) {
+                    // Handle plain text messages
+                    messageData = {
+                        type: 'text',
+                        content: event.data,
+                        timestamp: new Date().toISOString()
+                    };
+                }
+
+                setLastMessage(messageData);
+                setMessages(prev => [...prev, {
+                    ...messageData,
+                    id: Date.now() + Math.random(), // Simple unique ID
+                    received_at: new Date().toISOString()
+                }]);
+            };
+
+            ws.onclose = (event) => {
+                console.log('WebSocket disconnected:', event);
+                setReadyState(WebSocket.CLOSED);
+                setConnectionStatus(getConnectionStatus(WebSocket.CLOSED));
+
+                // Attempt to reconnect after 3 seconds if we should still be connected
+                if (shouldConnect) {
+                    setTimeout(() => {
+                        if (socketRef.current?.readyState === WebSocket.CLOSED) {
+                            console.log('Attempting to reconnect...');
+                            setConnectionStatus('Reconnecting...');
+                        }
+                    }, 3000);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                setConnectionStatus('Error occurred');
+            };
+
+            // Cleanup function
+            return () => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.close();
+                }
+            };
         } catch (error) {
             console.error('Error creating WebSocket:', error);
             setConnectionStatus(`Connection error: ${error.message}`);
             setReadyState(WebSocket.CLOSED);
             return;
         }
-
-        ws.onopen = (event) => {
-            console.log('WebSocket connected:', event);
-            setReadyState(WebSocket.OPEN);
-            setConnectionStatus(getConnectionStatus(WebSocket.OPEN));
-
-            // Send initial connection message
-            const initialMessage = {
-                type: 'connection',
-                message: 'React client connected',
-                timestamp: new Date().toISOString()
-            };
-            ws.send(JSON.stringify(initialMessage));
-        };
-
-        ws.onmessage = (event) => {
-            console.log('WebSocket message received:', event.data);
-
-            let messageData;
-            try {
-                messageData = JSON.parse(event.data);
-            } catch (e) {
-                // Handle plain text messages
-                messageData = {
-                    type: 'text',
-                    content: event.data,
-                    timestamp: new Date().toISOString()
-                };
-            }
-
-            setLastMessage(messageData);
-            setMessages(prev => [...prev, {
-                ...messageData,
-                id: Date.now() + Math.random(), // Simple unique ID
-                received_at: new Date().toISOString()
-            }]);
-        };
-
-        ws.onclose = (event) => {
-            console.log('WebSocket disconnected:', event);
-            setReadyState(WebSocket.CLOSED);
-            setConnectionStatus(getConnectionStatus(WebSocket.CLOSED));
-
-            // Attempt to reconnect after 3 seconds if we should still be connected
-            if (shouldConnect) {
-                setTimeout(() => {
-                    if (socketRef.current?.readyState === WebSocket.CLOSED) {
-                        console.log('Attempting to reconnect...');
-                        setConnectionStatus('Reconnecting...');
-                    }
-                }, 3000);
-            }
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            setConnectionStatus('Error occurred');
-        };
-
-        // Cleanup function
-        return () => {
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.close();
-            }
-        };
     }, [shouldConnect, wsUrl]);
 
     // Function to send messages
