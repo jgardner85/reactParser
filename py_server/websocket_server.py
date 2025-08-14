@@ -43,7 +43,8 @@ def get_image_files():
         if any(filename.lower().endswith(ext) for ext in image_extensions):
             image_files.append(filename)
 
-    return sorted(image_files)
+    # Limit to first 20 images to prevent memory overload with 246 images
+    return sorted(image_files)[:20]
 
 
 def get_image_ratings_file(image_filename):

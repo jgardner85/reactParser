@@ -271,6 +271,7 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                                 height="100"
                                 image={image.path}
                                 alt={image.filename}
+                                loading="lazy"
                                 sx={{
                                     objectFit: 'contain',
                                     width: '100%'
