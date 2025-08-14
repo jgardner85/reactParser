@@ -66,7 +66,7 @@ def load_user_ratings(user_id):
     return {}
 
 
-def save_user_rating(user_id, image_filename, rating, comment):
+def save_user_rating(user_id, image_filename, rating, comment, user_name=None):
     """Save or update a rating for a specific user and image"""
     ratings = load_user_ratings(user_id)
 
@@ -74,6 +74,7 @@ def save_user_rating(user_id, image_filename, rating, comment):
     ratings[image_filename] = {
         "rating": rating,
         "comment": comment,
+        "user_name": user_name,
         "timestamp": datetime.now().isoformat(),
     }
 
@@ -82,8 +83,9 @@ def save_user_rating(user_id, image_filename, rating, comment):
     try:
         with open(ratings_file, "w") as f:
             json.dump(ratings, f, indent=2)
+        user_display = f"{user_name} ({user_id})" if user_name else user_id
         logger.info(
-            f"Saved rating for user {user_id}, image {image_filename}: {rating}/5"
+            f"Saved rating for {user_display}, image {image_filename}: {rating}/5"
         )
         return True
     except IOError as e:
@@ -130,21 +132,26 @@ async def handle_client(websocket, path):
                     image_filename = data.get("image_filename")
                     rating = data.get("rating")
                     comment = data.get("comment", "")
+                    user_name = data.get("user_name")
 
                     if image_filename and rating:
                         success = save_user_rating(
-                            user_id, image_filename, rating, comment
+                            user_id, image_filename, rating, comment, user_name
                         )
                         response = {
                             "type": "rating_saved",
                             "success": success,
                             "image_filename": image_filename,
                             "rating": rating,
+                            "user_name": user_name,
                             "timestamp": datetime.now().isoformat(),
                         }
                         await websocket.send(json.dumps(response))
+                        user_display = (
+                            f"{user_name} ({user_id})" if user_name else user_id
+                        )
                         logger.info(
-                            f"Rating saved for user {user_id}: {image_filename} = {rating}/5"
+                            f"Rating saved for {user_display}: {image_filename} = {rating}/5"
                         )
                     else:
                         # Send error response

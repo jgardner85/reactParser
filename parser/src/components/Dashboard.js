@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import { Close as CloseIcon, Star as StarIcon } from '@mui/icons-material';
 
-const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage }) => {
+const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage, userName }) => {
     const [selectedImage, setSelectedImage] = useState(null);
     const [images, setImages] = useState([]);
     const [rating, setRating] = useState(0);
@@ -54,6 +54,7 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                 image_filename: selectedImage.filename,
                 rating: rating,
                 comment: comment,
+                user_name: userName,
                 timestamp: new Date().toISOString()
             };
 
@@ -69,11 +70,16 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
 
     return (
         <Box sx={{ p: 3 }}>
-            {/* Header with connection status */}
+            {/* Header with user name and connection status */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-                <Typography variant="h4" component="h1">
-                    Image Dashboard
-                </Typography>
+                <Box>
+                    <Typography variant="h4" component="h1">
+                        Welcome, {userName}! 👋
+                    </Typography>
+                    <Typography variant="subtitle1" color="text.secondary">
+                        Rate and comment on the images below
+                    </Typography>
+                </Box>
                 <Chip
                     label={`WebSocket: ${connectionStatus}`}
                     color={getStatusColor()}

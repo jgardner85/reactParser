@@ -1,16 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 const useWebSocket = (url) => {
-    // Use provided URL or auto-detect based on current hostname
-    const wsUrl = url || `ws://${window.location.hostname}:8765`;
     const [socket, setSocket] = useState(null);
     const [lastMessage, setLastMessage] = useState(null);
-    const [readyState, setReadyState] = useState(WebSocket.CONNECTING);
+    const [readyState, setReadyState] = useState(WebSocket.CLOSED);
     const [messages, setMessages] = useState([]);
-    const [connectionStatus, setConnectionStatus] = useState('Connecting...');
+    const [connectionStatus, setConnectionStatus] = useState('Not connected');
 
     // Use ref to maintain stable reference for cleanup
     const socketRef = useRef(null);
+
+    // Don't connect if url is explicitly null
+    const shouldConnect = url !== null;
+    const wsUrl = shouldConnect ? (url || `ws://${window.location.hostname}:8765`) : null;
 
     // Connection status mapping
     const getConnectionStatus = (state) => {
@@ -29,13 +31,19 @@ const useWebSocket = (url) => {
     };
 
     useEffect(() => {
-        if (!wsUrl) return;
+        if (!shouldConnect || !wsUrl) {
+            setReadyState(WebSocket.CLOSED);
+            setConnectionStatus('Not connected');
+            return;
+        }
 
         console.log(`Connecting to WebSocket: ${wsUrl}`);
 
         const ws = new WebSocket(wsUrl);
         socketRef.current = ws;
         setSocket(ws);
+        setReadyState(WebSocket.CONNECTING);
+        setConnectionStatus('Connecting...');
 
         ws.onopen = (event) => {
             console.log('WebSocket connected:', event);
@@ -79,13 +87,15 @@ const useWebSocket = (url) => {
             setReadyState(WebSocket.CLOSED);
             setConnectionStatus(getConnectionStatus(WebSocket.CLOSED));
 
-            // Attempt to reconnect after 3 seconds
-            setTimeout(() => {
-                if (socketRef.current?.readyState === WebSocket.CLOSED) {
-                    console.log('Attempting to reconnect...');
-                    setConnectionStatus('Reconnecting...');
-                }
-            }, 3000);
+            // Attempt to reconnect after 3 seconds if we should still be connected
+            if (shouldConnect) {
+                setTimeout(() => {
+                    if (socketRef.current?.readyState === WebSocket.CLOSED) {
+                        console.log('Attempting to reconnect...');
+                        setConnectionStatus('Reconnecting...');
+                    }
+                }, 3000);
+            }
         };
 
         ws.onerror = (error) => {
@@ -99,7 +109,7 @@ const useWebSocket = (url) => {
                 ws.close();
             }
         };
-    }, [wsUrl]);
+    }, [shouldConnect, wsUrl]);
 
     // Function to send messages
     const sendMessage = useCallback((message) => {
