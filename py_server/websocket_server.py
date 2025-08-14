@@ -18,6 +18,7 @@ from datetime import datetime
 import http.server
 import socketserver
 import threading
+import uuid
 
 # Configure logging
 logging.basicConfig(
@@ -25,8 +26,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Store connected clients
-connected_clients = set()
+# Store connected clients with their user IDs
+connected_clients = {}  # websocket -> user_id mapping
 
 
 def get_image_files():
@@ -45,13 +46,59 @@ def get_image_files():
     return sorted(image_files)
 
 
+def get_user_ratings_file(user_id):
+    """Get the ratings file path for a specific user"""
+    ratings_dir = "ratings"
+    if not os.path.exists(ratings_dir):
+        os.makedirs(ratings_dir)
+    return os.path.join(ratings_dir, f"user_{user_id}.json")
+
+
+def load_user_ratings(user_id):
+    """Load ratings for a specific user"""
+    ratings_file = get_user_ratings_file(user_id)
+    if os.path.exists(ratings_file):
+        try:
+            with open(ratings_file, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            logger.error(f"Error loading ratings for user {user_id}: {e}")
+    return {}
+
+
+def save_user_rating(user_id, image_filename, rating, comment):
+    """Save or update a rating for a specific user and image"""
+    ratings = load_user_ratings(user_id)
+
+    # Update or add the rating for this image
+    ratings[image_filename] = {
+        "rating": rating,
+        "comment": comment,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+    # Save back to file
+    ratings_file = get_user_ratings_file(user_id)
+    try:
+        with open(ratings_file, "w") as f:
+            json.dump(ratings, f, indent=2)
+        logger.info(
+            f"Saved rating for user {user_id}, image {image_filename}: {rating}/5"
+        )
+        return True
+    except IOError as e:
+        logger.error(f"Error saving rating for user {user_id}: {e}")
+        return False
+
+
 async def handle_client(websocket, path):
     """Handle a single WebSocket connection"""
     client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
-    logger.info(f"New client connected: {client_id}")
+    user_id = str(uuid.uuid4())[:8]  # Generate short user ID
+    logger.info(f"New client connected: {client_id} (User: {user_id})")
 
-    # Add client to connected set
-    connected_clients.add(websocket)
+    # Add client to connected set with user ID
+    connected_clients[websocket] = user_id
 
     # Send image file list immediately after connection
     try:
@@ -59,10 +106,13 @@ async def handle_client(websocket, path):
         file_list_message = {
             "type": "file_list",
             "files": image_files,
+            "user_id": user_id,
             "timestamp": datetime.now().isoformat(),
         }
         await websocket.send(json.dumps(file_list_message))
-        logger.info(f"Sent file list to {client_id}: {len(image_files)} images")
+        logger.info(
+            f"Sent file list to {client_id} (User: {user_id}): {len(image_files)} images"
+        )
     except Exception as e:
         logger.error(f"Error sending file list to {client_id}: {e}")
 
@@ -74,16 +124,46 @@ async def handle_client(websocket, path):
                 # Try to parse as JSON for structured messages
                 data = json.loads(message)
 
-                # Create response with timestamp
-                response = {
-                    "type": "echo",
-                    "original_message": data,
-                    "timestamp": datetime.now().isoformat(),
-                    "client_id": client_id,
-                }
+                # Handle different message types
+                if data.get("type") == "image_rating":
+                    # Handle image rating submission
+                    image_filename = data.get("image_filename")
+                    rating = data.get("rating")
+                    comment = data.get("comment", "")
 
-                await websocket.send(json.dumps(response))
-                logger.info(f"Sent JSON response to {client_id}")
+                    if image_filename and rating:
+                        success = save_user_rating(
+                            user_id, image_filename, rating, comment
+                        )
+                        response = {
+                            "type": "rating_saved",
+                            "success": success,
+                            "image_filename": image_filename,
+                            "rating": rating,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                        await websocket.send(json.dumps(response))
+                        logger.info(
+                            f"Rating saved for user {user_id}: {image_filename} = {rating}/5"
+                        )
+                    else:
+                        # Send error response
+                        response = {
+                            "type": "error",
+                            "message": "Invalid rating data",
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                        await websocket.send(json.dumps(response))
+                else:
+                    # Echo other messages
+                    response = {
+                        "type": "echo",
+                        "original_message": data,
+                        "timestamp": datetime.now().isoformat(),
+                        "client_id": client_id,
+                    }
+                    await websocket.send(json.dumps(response))
+                    logger.info(f"Sent JSON response to {client_id}")
 
             except json.JSONDecodeError:
                 # Handle plain text messages
@@ -97,16 +177,17 @@ async def handle_client(websocket, path):
         logger.error(f"Error handling client {client_id}: {e}")
     finally:
         # Remove client from connected set
-        connected_clients.discard(websocket)
-        logger.info(f"Client {client_id} connection cleaned up")
+        if websocket in connected_clients:
+            del connected_clients[websocket]
+        logger.info(f"Client {client_id} (User: {user_id}) connection cleaned up")
 
 
 async def broadcast_message(message):
     """Broadcast a message to all connected clients"""
     if connected_clients:
         logger.info(f"Broadcasting to {len(connected_clients)} clients: {message}")
-        # Create list to avoid set changed during iteration
-        clients_list = list(connected_clients)
+        # Create list to avoid dict changed during iteration
+        clients_list = list(connected_clients.keys())
         await asyncio.gather(
             *[client.send(message) for client in clients_list], return_exceptions=True
         )
