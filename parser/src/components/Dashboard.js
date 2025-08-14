@@ -18,9 +18,16 @@ import {
     ListItemText,
     ListItemAvatar,
     Avatar,
-    Divider
+    Divider,
+    Badge,
+    Drawer
 } from '@mui/material';
-import { Close as CloseIcon, Star as StarIcon } from '@mui/icons-material';
+import {
+    Close as CloseIcon,
+    Star as StarIcon,
+    Notifications as NotificationsIcon,
+    NotificationsNone as NotificationsNoneIcon
+} from '@mui/icons-material';
 import RatingToast from './RatingToast';
 
 const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage, userName }) => {
@@ -31,6 +38,9 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
     const [toastOpen, setToastOpen] = useState(false);
     const [toastData, setToastData] = useState(null);
     const [imageRatingsFeeds, setImageRatingsFeeds] = useState({}); // Store feeds for all images
+    const [notifications, setNotifications] = useState([]); // Store all notifications
+    const [notificationsOpen, setNotificationsOpen] = useState(false);
+    const [unreadCount, setUnreadCount] = useState(0);
 
     // Listen for file list from WebSocket
     useEffect(() => {
@@ -58,9 +68,41 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
 
             // Show toast notification for the latest rating
             if (feedData.ratings_feed && feedData.ratings_feed.length > 0) {
+                const latestRating = feedData.ratings_feed[0]; // Newest rating
+
+                // Create notification object
+                const notification = {
+                    id: Date.now() + Math.random(),
+                    type: 'rating_update',
+                    feedData: feedData,
+                    latestRating: latestRating,
+                    timestamp: new Date().toISOString(),
+                    read: false
+                };
+
+                // Add to notifications list
+                setNotifications(prev => [notification, ...prev]);
+                setUnreadCount(prev => prev + 1);
+
+                // Show toast
                 setToastData(feedData);
                 setToastOpen(true);
             }
+        }
+    }, [lastMessage]);
+
+    // Listen for feed responses (existing ratings when user clicks image)
+    useEffect(() => {
+        if (lastMessage && lastMessage.type === 'feed_response') {
+            const feedData = lastMessage;
+
+            // Store the ratings feed for this image (no toast for existing data)
+            setImageRatingsFeeds(prev => ({
+                ...prev,
+                [feedData.image_filename]: feedData
+            }));
+
+            console.log(`Loaded existing feed for ${feedData.image_filename}: ${feedData.total_ratings} ratings`);
         }
     }, [lastMessage]);
 
@@ -68,6 +110,14 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
         setSelectedImage(image);
         setRating(0);
         setComment('');
+
+        // Request existing ratings feed for this image
+        if (sendJsonMessage && isConnected) {
+            sendJsonMessage({
+                type: 'request_feed',
+                image_filename: image.filename
+            });
+        }
     };
 
     const handleCloseDialog = () => {
@@ -103,6 +153,14 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
             setSelectedImage(image);
             setRating(0);
             setComment('');
+
+            // Request existing ratings feed for this image (in case there are more ratings than just the latest)
+            if (sendJsonMessage && isConnected) {
+                sendJsonMessage({
+                    type: 'request_feed',
+                    image_filename: image.filename
+                });
+            }
         }
     };
 
@@ -113,6 +171,49 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
 
     const getAvatarText = (name) => {
         return name ? name.charAt(0).toUpperCase() : '?';
+    };
+
+    const handleNotificationsOpen = () => {
+        setNotificationsOpen(true);
+    };
+
+    const handleNotificationsClose = () => {
+        setNotificationsOpen(false);
+    };
+
+    const handleNotificationClick = (notification) => {
+        // Mark notification as read
+        setNotifications(prev =>
+            prev.map(n => n.id === notification.id ? { ...n, read: true } : n)
+        );
+        setUnreadCount(prev => Math.max(0, prev - 1));
+
+        // Open the image modal for this notification
+        const image = images.find(img => img.filename === notification.feedData.image_filename);
+        if (image) {
+            setSelectedImage(image);
+            setRating(0);
+            setComment('');
+            setNotificationsOpen(false);
+
+            // Request existing ratings feed for this image
+            if (sendJsonMessage && isConnected) {
+                sendJsonMessage({
+                    type: 'request_feed',
+                    image_filename: image.filename
+                });
+            }
+        }
+    };
+
+    const markAllAsRead = () => {
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        setUnreadCount(0);
+    };
+
+    const clearAllNotifications = () => {
+        setNotifications([]);
+        setUnreadCount(0);
     };
 
     const getStatusColor = () => {
@@ -132,12 +233,19 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                         Rate and comment on the images below
                     </Typography>
                 </Box>
-                <Chip
-                    label={`WebSocket: ${connectionStatus}`}
-                    color={getStatusColor()}
-                    size="small"
-                    variant="outlined"
-                />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <IconButton onClick={handleNotificationsOpen} color="primary">
+                        <Badge badgeContent={unreadCount} color="error">
+                            {unreadCount > 0 ? <NotificationsIcon /> : <NotificationsNoneIcon />}
+                        </Badge>
+                    </IconButton>
+                    <Chip
+                        label={`WebSocket: ${connectionStatus}`}
+                        color={getStatusColor()}
+                        size="small"
+                        variant="outlined"
+                    />
+                </Box>
             </Box>
 
             {/* Image Grid */}
@@ -310,6 +418,106 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                     </>
                 )}
             </Dialog>
+
+            {/* Notifications Drawer */}
+            <Drawer
+                anchor="right"
+                open={notificationsOpen}
+                onClose={handleNotificationsClose}
+            >
+                <Box sx={{ width: 400, p: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                        <Typography variant="h6">
+                            Notifications ({notifications.length})
+                        </Typography>
+                        <Box>
+                            {unreadCount > 0 && (
+                                <Button size="small" onClick={markAllAsRead} sx={{ mr: 1 }}>
+                                    Mark All Read
+                                </Button>
+                            )}
+                            <Button size="small" onClick={clearAllNotifications}>
+                                Clear All
+                            </Button>
+                            <IconButton onClick={handleNotificationsClose} size="small">
+                                <CloseIcon />
+                            </IconButton>
+                        </Box>
+                    </Box>
+
+                    <Divider sx={{ mb: 2 }} />
+
+                    {notifications.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4 }}>
+                            No notifications yet. You'll see updates here when others rate images!
+                        </Typography>
+                    ) : (
+                        <List>
+                            {notifications.map((notification) => (
+                                <ListItem
+                                    key={notification.id}
+                                    button
+                                    onClick={() => handleNotificationClick(notification)}
+                                    sx={{
+                                        backgroundColor: notification.read ? 'transparent' : 'action.hover',
+                                        borderRadius: 1,
+                                        mb: 1,
+                                        border: notification.read ? 'none' : '1px solid',
+                                        borderColor: 'primary.main'
+                                    }}
+                                >
+                                    <ListItemAvatar>
+                                        <Avatar sx={{ width: 32, height: 32, fontSize: '0.875rem' }}>
+                                            {getAvatarText(notification.latestRating.user_name)}
+                                        </Avatar>
+                                    </ListItemAvatar>
+                                    <ListItemText
+                                        primary={
+                                            <Box>
+                                                <Typography variant="subtitle2" sx={{ fontWeight: notification.read ? 'normal' : 'bold' }}>
+                                                    {notification.latestRating.user_name} rated {notification.feedData.image_filename}
+                                                </Typography>
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                                                    <Rating
+                                                        value={notification.latestRating.rating}
+                                                        readOnly
+                                                        size="small"
+                                                        emptyIcon={<StarIcon style={{ opacity: 0.55 }} fontSize="inherit" />}
+                                                    />
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        ({notification.latestRating.rating}/5)
+                                                    </Typography>
+                                                </Box>
+                                            </Box>
+                                        }
+                                        secondary={
+                                            <Box>
+                                                {notification.latestRating.comment && (
+                                                    <Typography
+                                                        variant="body2"
+                                                        sx={{
+                                                            fontStyle: 'italic',
+                                                            overflow: 'hidden',
+                                                            textOverflow: 'ellipsis',
+                                                            whiteSpace: 'nowrap',
+                                                            mt: 0.5
+                                                        }}
+                                                    >
+                                                        "{notification.latestRating.comment}"
+                                                    </Typography>
+                                                )}
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {new Date(notification.timestamp).toLocaleString()}
+                                                </Typography>
+                                            </Box>
+                                        }
+                                    />
+                                </ListItem>
+                            ))}
+                        </List>
+                    )}
+                </Box>
+            </Drawer>
 
             {/* Toast Notification for Rating Updates */}
             <RatingToast

@@ -196,11 +196,32 @@ async def handle_client(websocket, path):
                             await broadcast_rating_update(
                                 image_filename, exclude_client=websocket
                             )
+                elif data.get("type") == "request_feed":
+                    # Handle request for existing ratings feed
+                    image_filename = data.get("image_filename")
+
+                    if image_filename:
+                        # Load existing ratings data for this image
+                        ratings_data = load_image_ratings(image_filename)
+
+                        response = {
+                            "type": "feed_response",
+                            "image_filename": image_filename,
+                            "total_ratings": ratings_data["total_ratings"],
+                            "average_rating": ratings_data["average_rating"],
+                            "ratings_feed": ratings_data["ratings_feed"],
+                            "timestamp": datetime.now().isoformat(),
+                        }
+
+                        await websocket.send(json.dumps(response))
+                        logger.info(
+                            f"Sent existing feed for {image_filename} to {client_id} - {ratings_data['total_ratings']} ratings"
+                        )
                     else:
                         # Send error response
                         response = {
                             "type": "error",
-                            "message": "Invalid rating data",
+                            "message": "Missing image filename for feed request",
                             "timestamp": datetime.now().isoformat(),
                         }
                         await websocket.send(json.dumps(response))
