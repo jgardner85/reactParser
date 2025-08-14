@@ -12,15 +12,25 @@ import {
     Chip,
     Rating,
     TextField,
-    Button
+    Button,
+    List,
+    ListItem,
+    ListItemText,
+    ListItemAvatar,
+    Avatar,
+    Divider
 } from '@mui/material';
 import { Close as CloseIcon, Star as StarIcon } from '@mui/icons-material';
+import RatingToast from './RatingToast';
 
 const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage, userName }) => {
     const [selectedImage, setSelectedImage] = useState(null);
     const [images, setImages] = useState([]);
     const [rating, setRating] = useState(0);
     const [comment, setComment] = useState('');
+    const [toastOpen, setToastOpen] = useState(false);
+    const [toastData, setToastData] = useState(null);
+    const [imageRatingsFeeds, setImageRatingsFeeds] = useState({}); // Store feeds for all images
 
     // Listen for file list from WebSocket
     useEffect(() => {
@@ -32,6 +42,25 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                 path: `http://${hostname}:8766/pics/${filename}`
             }));
             setImages(imageFiles);
+        }
+    }, [lastMessage]);
+
+    // Listen for rating feed updates from other users
+    useEffect(() => {
+        if (lastMessage && lastMessage.type === 'rating_feed_update') {
+            const feedData = lastMessage;
+
+            // Store the ratings feed for this image
+            setImageRatingsFeeds(prev => ({
+                ...prev,
+                [feedData.image_filename]: feedData
+            }));
+
+            // Show toast notification for the latest rating
+            if (feedData.ratings_feed && feedData.ratings_feed.length > 0) {
+                setToastData(feedData);
+                setToastOpen(true);
+            }
         }
     }, [lastMessage]);
 
@@ -61,6 +90,29 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
             sendJsonMessage(ratingData);
             handleCloseDialog();
         }
+    };
+
+    const handleToastClose = () => {
+        setToastOpen(false);
+    };
+
+    const handleToastClick = (feedData) => {
+        // Find the image that was rated and open its modal
+        const image = images.find(img => img.filename === feedData.image_filename);
+        if (image) {
+            setSelectedImage(image);
+            setRating(0);
+            setComment('');
+        }
+    };
+
+    const getCurrentImageFeed = () => {
+        if (!selectedImage) return null;
+        return imageRatingsFeeds[selectedImage.filename] || null;
+    };
+
+    const getAvatarText = (name) => {
+        return name ? name.charAt(0).toUpperCase() : '?';
     };
 
     const getStatusColor = () => {
@@ -194,6 +246,52 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                                     variant="outlined"
                                 />
                             </Box>
+
+                            {/* Existing Ratings Feed */}
+                            {getCurrentImageFeed() && getCurrentImageFeed().ratings_feed.length > 0 && (
+                                <Box sx={{ mb: 2 }}>
+                                    <Divider sx={{ mb: 2 }} />
+                                    <Typography variant="h6" gutterBottom>
+                                        Comments Feed ({getCurrentImageFeed().total_ratings} ratings, avg: {getCurrentImageFeed().average_rating}/5)
+                                    </Typography>
+                                    <List dense>
+                                        {getCurrentImageFeed().ratings_feed.map((feedRating, index) => (
+                                            <ListItem key={index} alignItems="flex-start">
+                                                <ListItemAvatar>
+                                                    <Avatar sx={{ width: 32, height: 32, fontSize: '0.875rem' }}>
+                                                        {getAvatarText(feedRating.user_name)}
+                                                    </Avatar>
+                                                </ListItemAvatar>
+                                                <ListItemText
+                                                    primary={
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                                                            <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+                                                                {feedRating.user_name}
+                                                            </Typography>
+                                                            <Rating
+                                                                value={feedRating.rating}
+                                                                readOnly
+                                                                size="small"
+                                                                emptyIcon={<StarIcon style={{ opacity: 0.55 }} fontSize="inherit" />}
+                                                            />
+                                                            <Typography variant="caption" color="text.secondary">
+                                                                {new Date(feedRating.timestamp).toLocaleString()}
+                                                            </Typography>
+                                                        </Box>
+                                                    }
+                                                    secondary={
+                                                        feedRating.comment && (
+                                                            <Typography variant="body2" sx={{ mt: 0.5 }}>
+                                                                {feedRating.comment}
+                                                            </Typography>
+                                                        )
+                                                    }
+                                                />
+                                            </ListItem>
+                                        ))}
+                                    </List>
+                                </Box>
+                            )}
                         </DialogContent>
 
                         <DialogActions sx={{ p: 2, pt: 0 }}>
@@ -212,6 +310,14 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                     </>
                 )}
             </Dialog>
+
+            {/* Toast Notification for Rating Updates */}
+            <RatingToast
+                open={toastOpen}
+                onClose={handleToastClose}
+                onClick={handleToastClick}
+                ratingData={toastData}
+            />
         </Box>
     );
 };
