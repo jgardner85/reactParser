@@ -7,14 +7,20 @@ import {
     Dialog,
     DialogContent,
     DialogTitle,
+    DialogActions,
     IconButton,
-    Chip
+    Chip,
+    Rating,
+    TextField,
+    Button
 } from '@mui/material';
-import { Close as CloseIcon } from '@mui/icons-material';
+import { Close as CloseIcon, Star as StarIcon } from '@mui/icons-material';
 
-const Dashboard = ({ connectionStatus, isConnected, lastMessage }) => {
+const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage }) => {
     const [selectedImage, setSelectedImage] = useState(null);
     const [images, setImages] = useState([]);
+    const [rating, setRating] = useState(0);
+    const [comment, setComment] = useState('');
 
     // Listen for file list from WebSocket
     useEffect(() => {
@@ -30,10 +36,29 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage }) => {
 
     const handleImageClick = (image) => {
         setSelectedImage(image);
+        setRating(0);
+        setComment('');
     };
 
     const handleCloseDialog = () => {
         setSelectedImage(null);
+        setRating(0);
+        setComment('');
+    };
+
+    const handleSubmitRating = () => {
+        if (selectedImage && rating > 0) {
+            const ratingData = {
+                type: 'image_rating',
+                image_filename: selectedImage.filename,
+                rating: rating,
+                comment: comment,
+                timestamp: new Date().toISOString()
+            };
+
+            sendJsonMessage(ratingData);
+            handleCloseDialog();
+        }
     };
 
     const getStatusColor = () => {
@@ -89,15 +114,15 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage }) => {
                 ))}
             </Grid>
 
-            {/* Full-size Image Dialog */}
+            {/* Full-size Image Dialog with Rating */}
             <Dialog
                 open={Boolean(selectedImage)}
                 onClose={handleCloseDialog}
-                maxWidth="lg"
+                maxWidth="md"
                 fullWidth
                 PaperProps={{
                     sx: {
-                        maxHeight: '90vh',
+                        maxHeight: '95vh',
                         backgroundColor: 'background.paper'
                     }
                 }}
@@ -110,7 +135,9 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage }) => {
                                 <CloseIcon />
                             </IconButton>
                         </DialogTitle>
+
                         <DialogContent sx={{ p: 2 }}>
+                            {/* Full-size Image */}
                             <Box
                                 component="img"
                                 src={selectedImage.path}
@@ -118,13 +145,63 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage }) => {
                                 sx={{
                                     width: '100%',
                                     height: 'auto',
-                                    maxHeight: '70vh',
+                                    maxHeight: '50vh',
                                     objectFit: 'contain',
                                     display: 'block',
-                                    margin: '0 auto'
+                                    margin: '0 auto 20px auto',
+                                    borderRadius: 1
                                 }}
                             />
+
+                            {/* Rating Section */}
+                            <Box sx={{ mb: 3 }}>
+                                <Typography variant="h6" gutterBottom>
+                                    Rate this image
+                                </Typography>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                    <Rating
+                                        name="image-rating"
+                                        value={rating}
+                                        onChange={(event, newValue) => setRating(newValue)}
+                                        size="large"
+                                        emptyIcon={<StarIcon style={{ opacity: 0.55 }} fontSize="inherit" />}
+                                    />
+                                    <Typography variant="body2" color="text.secondary">
+                                        {rating > 0 ? `${rating}/5 stars` : 'No rating'}
+                                    </Typography>
+                                </Box>
+                            </Box>
+
+                            {/* Comment Section */}
+                            <Box sx={{ mb: 2 }}>
+                                <Typography variant="h6" gutterBottom>
+                                    Add a comment
+                                </Typography>
+                                <TextField
+                                    fullWidth
+                                    multiline
+                                    rows={3}
+                                    placeholder="What do you think about this image?"
+                                    value={comment}
+                                    onChange={(e) => setComment(e.target.value)}
+                                    variant="outlined"
+                                />
+                            </Box>
                         </DialogContent>
+
+                        <DialogActions sx={{ p: 2, pt: 0 }}>
+                            <Button onClick={handleCloseDialog} color="secondary">
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleSubmitRating}
+                                variant="contained"
+                                disabled={rating === 0}
+                                color="primary"
+                            >
+                                Submit Rating
+                            </Button>
+                        </DialogActions>
                     </>
                 )}
             </Dialog>

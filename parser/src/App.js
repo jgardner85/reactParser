@@ -16,7 +16,8 @@ function App() {
   const {
     connectionStatus,
     isConnected,
-    lastMessage
+    lastMessage,
+    sendJsonMessage
   } = useWebSocket('ws://localhost:8765');
 
   return (
@@ -27,6 +28,7 @@ function App() {
           connectionStatus={connectionStatus}
           isConnected={isConnected}
           lastMessage={lastMessage}
+          sendJsonMessage={sendJsonMessage}
         />
       </Container>
     </ThemeProvider>
