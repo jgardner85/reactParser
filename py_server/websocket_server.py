@@ -348,7 +348,7 @@ def start_http_server():
 def main():
     """Start the WebSocket server"""
     host = "0.0.0.0"  # Bind to all interfaces
-    port = 8765
+    port = 8767  # Different port that might not be blocked
 
     logger.info(f"Starting WebSocket server on {host}:{port}")
     logger.info("Server features:")

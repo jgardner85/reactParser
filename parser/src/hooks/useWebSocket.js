@@ -12,7 +12,7 @@ const useWebSocket = (url) => {
 
     // Don't connect if url is explicitly null
     const shouldConnect = url !== null;
-    const wsUrl = shouldConnect ? (url || `ws://${window.location.hostname}:8765`) : null;
+    const wsUrl = shouldConnect ? (url || `ws://${window.location.hostname}:8767`) : null;
 
     // Connection status mapping
     const getConnectionStatus = (state) => {
@@ -38,12 +38,31 @@ const useWebSocket = (url) => {
         }
 
         console.log(`Connecting to WebSocket: ${wsUrl}`);
+        console.log('User Agent:', navigator.userAgent);
+        console.log('WebSocket support:', typeof WebSocket !== 'undefined');
 
-        const ws = new WebSocket(wsUrl);
-        socketRef.current = ws;
-        setSocket(ws);
-        setReadyState(WebSocket.CONNECTING);
-        setConnectionStatus('Connecting...');
+        // Check WebSocket support
+        if (typeof WebSocket === 'undefined') {
+            console.error('WebSocket not supported in this browser');
+            setConnectionStatus('WebSocket not supported');
+            setReadyState(WebSocket.CLOSED);
+            return;
+        }
+
+        try {
+            const ws = new WebSocket(wsUrl);
+            socketRef.current = ws;
+            setSocket(ws);
+            setReadyState(WebSocket.CONNECTING);
+            setConnectionStatus('Connecting...');
+
+            console.log('WebSocket object created successfully');
+        } catch (error) {
+            console.error('Error creating WebSocket:', error);
+            setConnectionStatus(`Connection error: ${error.message}`);
+            setReadyState(WebSocket.CLOSED);
+            return;
+        }
 
         ws.onopen = (event) => {
             console.log('WebSocket connected:', event);
