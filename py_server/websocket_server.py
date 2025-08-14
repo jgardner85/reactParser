@@ -46,50 +46,91 @@ def get_image_files():
     return sorted(image_files)
 
 
-def get_user_ratings_file(user_id):
-    """Get the ratings file path for a specific user"""
-    ratings_dir = "ratings"
+def get_image_ratings_file(image_filename):
+    """Get the ratings file path for a specific image"""
+    ratings_dir = "image_ratings"
     if not os.path.exists(ratings_dir):
         os.makedirs(ratings_dir)
-    return os.path.join(ratings_dir, f"user_{user_id}.json")
+    # Clean filename for filesystem (remove extension, replace special chars)
+    clean_name = os.path.splitext(image_filename)[0].replace(" ", "_").replace("/", "_")
+    return os.path.join(ratings_dir, f"{clean_name}_ratings.json")
 
 
-def load_user_ratings(user_id):
-    """Load ratings for a specific user"""
-    ratings_file = get_user_ratings_file(user_id)
+def load_image_ratings(image_filename):
+    """Load all ratings for a specific image"""
+    ratings_file = get_image_ratings_file(image_filename)
     if os.path.exists(ratings_file):
         try:
             with open(ratings_file, "r") as f:
                 return json.load(f)
         except (json.JSONDecodeError, IOError) as e:
-            logger.error(f"Error loading ratings for user {user_id}: {e}")
-    return {}
+            logger.error(f"Error loading ratings for image {image_filename}: {e}")
 
-
-def save_user_rating(user_id, image_filename, rating, comment, user_name=None):
-    """Save or update a rating for a specific user and image"""
-    ratings = load_user_ratings(user_id)
-
-    # Update or add the rating for this image
-    ratings[image_filename] = {
-        "rating": rating,
-        "comment": comment,
-        "user_name": user_name,
-        "timestamp": datetime.now().isoformat(),
+    # Return empty structure if file doesn't exist
+    return {
+        "image_filename": image_filename,
+        "total_ratings": 0,
+        "average_rating": 0.0,
+        "ratings_feed": [],
     }
 
+
+def save_image_rating(
+    user_id, image_filename, rating, comment, user_name=None, full_message=None
+):
+    """Add a new rating to an image's chronological feed"""
+    ratings_data = load_image_ratings(image_filename)
+
+    # Create the rating entry with full WebSocket message data
+    rating_entry = {
+        "user_id": user_id,
+        "user_name": user_name,
+        "rating": rating,
+        "comment": comment,
+        "timestamp": datetime.now().isoformat(),
+        "full_message": full_message,  # Store the complete WebSocket message
+    }
+
+    # Check if this user already rated this image (to replace their previous rating)
+    existing_index = None
+    for i, existing_rating in enumerate(ratings_data["ratings_feed"]):
+        if existing_rating["user_id"] == user_id:
+            existing_index = i
+            break
+
+    # Either replace existing rating or append new one
+    if existing_index is not None:
+        ratings_data["ratings_feed"][existing_index] = rating_entry
+        logger.info(f"Updated existing rating for user {user_name} ({user_id})")
+    else:
+        ratings_data["ratings_feed"].append(rating_entry)
+        logger.info(f"Added new rating for user {user_name} ({user_id})")
+
+    # Sort by timestamp (newest first)
+    ratings_data["ratings_feed"].sort(key=lambda x: x["timestamp"], reverse=True)
+
+    # Update summary statistics
+    ratings_data["total_ratings"] = len(ratings_data["ratings_feed"])
+    if ratings_data["total_ratings"] > 0:
+        total_score = sum(r["rating"] for r in ratings_data["ratings_feed"])
+        ratings_data["average_rating"] = round(
+            total_score / ratings_data["total_ratings"], 2
+        )
+    else:
+        ratings_data["average_rating"] = 0.0
+
     # Save back to file
-    ratings_file = get_user_ratings_file(user_id)
+    ratings_file = get_image_ratings_file(image_filename)
     try:
         with open(ratings_file, "w") as f:
-            json.dump(ratings, f, indent=2)
+            json.dump(ratings_data, f, indent=2)
         user_display = f"{user_name} ({user_id})" if user_name else user_id
         logger.info(
-            f"Saved rating for {user_display}, image {image_filename}: {rating}/5"
+            f"Saved rating for {user_display} on {image_filename}: {rating}/5 (avg: {ratings_data['average_rating']})"
         )
         return True
     except IOError as e:
-        logger.error(f"Error saving rating for user {user_id}: {e}")
+        logger.error(f"Error saving rating for image {image_filename}: {e}")
         return False
 
 
@@ -135,8 +176,8 @@ async def handle_client(websocket, path):
                     user_name = data.get("user_name")
 
                     if image_filename and rating:
-                        success = save_user_rating(
-                            user_id, image_filename, rating, comment, user_name
+                        success = save_image_rating(
+                            user_id, image_filename, rating, comment, user_name, data
                         )
                         response = {
                             "type": "rating_saved",
@@ -147,12 +188,7 @@ async def handle_client(websocket, path):
                             "timestamp": datetime.now().isoformat(),
                         }
                         await websocket.send(json.dumps(response))
-                        user_display = (
-                            f"{user_name} ({user_id})" if user_name else user_id
-                        )
-                        logger.info(
-                            f"Rating saved for {user_display}: {image_filename} = {rating}/5"
-                        )
+                        # Logging is now handled in save_image_rating function
                     else:
                         # Send error response
                         response = {
