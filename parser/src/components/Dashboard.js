@@ -126,6 +126,35 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
         setComment('');
     };
 
+    const getNextImage = () => {
+        if (!selectedImage) return null;
+        const currentIndex = images.findIndex(img => img.id === selectedImage.id);
+        if (currentIndex >= 0 && currentIndex < images.length - 1) {
+            return images[currentIndex + 1];
+        }
+        return null;
+    };
+
+    const openNextImage = () => {
+        const nextImage = getNextImage();
+        if (nextImage) {
+            setSelectedImage(nextImage);
+            setRating(0);
+            setComment('');
+
+            // Request existing ratings feed for the next image
+            if (sendJsonMessage && isConnected) {
+                sendJsonMessage({
+                    type: 'request_feed',
+                    image_filename: nextImage.filename
+                });
+            }
+        } else {
+            // No more images, close dialog
+            handleCloseDialog();
+        }
+    };
+
     const handleSubmitRating = () => {
         if (selectedImage && rating > 0) {
             const ratingData = {
@@ -138,8 +167,14 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
             };
 
             sendJsonMessage(ratingData);
-            handleCloseDialog();
+            // Auto-advance to next image instead of closing
+            openNextImage();
         }
+    };
+
+    const handleSkipImage = () => {
+        // Skip to next image without rating
+        openNextImage();
     };
 
     const handleToastClose = () => {
@@ -402,18 +437,27 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                             )}
                         </DialogContent>
 
-                        <DialogActions sx={{ p: 2, pt: 0 }}>
+                        <DialogActions sx={{ p: 2, pt: 0, justifyContent: 'space-between' }}>
                             <Button onClick={handleCloseDialog} color="secondary">
-                                Cancel
+                                Close
                             </Button>
-                            <Button
-                                onClick={handleSubmitRating}
-                                variant="contained"
-                                disabled={rating === 0}
-                                color="primary"
-                            >
-                                Submit Rating
-                            </Button>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                                <Button
+                                    onClick={handleSkipImage}
+                                    color="info"
+                                    variant="outlined"
+                                >
+                                    Skip → Next
+                                </Button>
+                                <Button
+                                    onClick={handleSubmitRating}
+                                    variant="contained"
+                                    disabled={rating === 0}
+                                    color="primary"
+                                >
+                                    {getNextImage() ? 'Submit & Next →' : 'Submit & Finish'}
+                                </Button>
+                            </Box>
                         </DialogActions>
                     </>
                 )}
