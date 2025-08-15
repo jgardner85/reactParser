@@ -43,7 +43,7 @@ def get_image_files():
         if any(filename.lower().endswith(ext) for ext in image_extensions):
             image_files.append(filename)
 
-    return sorted(image_files)
+    return sorted(image_files, reverse=True)
 
 
 def get_image_ratings_file(image_filename):
