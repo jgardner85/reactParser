@@ -26,11 +26,12 @@ import {
     Close as CloseIcon,
     Star as StarIcon,
     Notifications as NotificationsIcon,
-    NotificationsNone as NotificationsNoneIcon
+    NotificationsNone as NotificationsNoneIcon,
+    Favorite as FavoriteIcon
 } from '@mui/icons-material';
 import RatingToast from './RatingToast';
 
-const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage, userName }) => {
+const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage, userName, messages }) => {
     const [selectedImage, setSelectedImage] = useState(null);
     const [images, setImages] = useState([]);
     const [rating, setRating] = useState(0);
@@ -38,6 +39,9 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
     const [toastOpen, setToastOpen] = useState(false);
     const [toastData, setToastData] = useState(null);
     const [imageRatingsFeeds, setImageRatingsFeeds] = useState({}); // Store feeds for all images
+    const [userRatings, setUserRatings] = useState({}); // Store current user's ratings by image filename
+    const [freshRatings, setFreshRatings] = useState(new Set()); // Track images with fresh ratings that shouldn't be overwritten
+    const [currentUserId, setCurrentUserId] = useState(null); // Store current user's ID from server
     const [notifications, setNotifications] = useState([]); // Store all notifications
     const [notificationsOpen, setNotificationsOpen] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
@@ -52,8 +56,64 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                 path: `http://${hostname}:8766/pics/${filename}`
             }));
             setImages(imageFiles);
+
+            // Capture the current user's ID
+            if (lastMessage.user_id) {
+                setCurrentUserId(lastMessage.user_id);
+
+                // Request feeds for all images to load existing user ratings
+                if (sendJsonMessage && isConnected) {
+                    imageFiles.forEach(image => {
+                        sendJsonMessage({
+                            type: 'request_feed',
+                            image_filename: image.filename
+                        });
+                    });
+                }
+            }
         }
-    }, [lastMessage]);
+    }, [lastMessage, sendJsonMessage, isConnected]);
+
+    // Function to extract current user's rating from a feed (by username)
+    const extractUserRating = (feedData, userName) => {
+        if (!feedData || !feedData.ratings_feed || !userName) return null;
+
+        const userRating = feedData.ratings_feed.find(rating => rating.user_name === userName);
+        return userRating ? userRating.rating : null;
+    };
+
+    // Process all feed_response messages to ensure none are missed
+    useEffect(() => {
+        if (!messages || !userName) return;
+
+        // Find any feed_response messages that haven't been processed yet
+        const feedResponses = messages.filter(msg => msg.type === 'feed_response');
+
+        feedResponses.forEach(message => {
+            const feedData = message;
+
+            // Store the ratings feed for this image
+            setImageRatingsFeeds(prev => ({
+                ...prev,
+                [feedData.image_filename]: feedData
+            }));
+
+            // Extract and store current user's rating for this image (but don't overwrite fresh ratings)
+            const userRating = extractUserRating(feedData, userName);
+            console.log(`Frontend: Processing feed for ${feedData.image_filename}:`, {
+                userName,
+                userRating,
+                shouldShowHeart: userRating >= 4,
+                feedData: feedData.ratings_feed?.find(r => r.user_name === userName)
+            });
+            if (userRating !== null && !freshRatings.has(feedData.image_filename)) {
+                setUserRatings(prev => ({
+                    ...prev,
+                    [feedData.image_filename]: userRating
+                }));
+            }
+        });
+    }, [messages, userName]);
 
     // Listen for rating feed updates from other users
     useEffect(() => {
@@ -65,6 +125,23 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                 ...prev,
                 [feedData.image_filename]: feedData
             }));
+
+            // Extract and store current user's rating for this image
+            if (userName) {
+                const userRating = extractUserRating(feedData, userName);
+                console.log(`Frontend: Checking rating for ${feedData.image_filename}:`, {
+                    userName,
+                    userRating,
+                    shouldShowHeart: userRating >= 4,
+                    feedData: feedData.ratings_feed?.find(r => r.user_name === userName)
+                });
+                if (userRating !== null && !freshRatings.has(feedData.image_filename)) {
+                    setUserRatings(prev => ({
+                        ...prev,
+                        [feedData.image_filename]: userRating
+                    }));
+                }
+            }
 
             // Show toast notification for the latest rating
             if (feedData.ratings_feed && feedData.ratings_feed.length > 0) {
@@ -101,6 +178,23 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                 ...prev,
                 [feedData.image_filename]: feedData
             }));
+
+            // Extract and store current user's rating for this image
+            if (userName) {
+                const userRating = extractUserRating(feedData, userName);
+                console.log(`Frontend: Checking rating for ${feedData.image_filename}:`, {
+                    userName,
+                    userRating,
+                    shouldShowHeart: userRating >= 4,
+                    feedData: feedData.ratings_feed?.find(r => r.user_name === userName)
+                });
+                if (userRating !== null && !freshRatings.has(feedData.image_filename)) {
+                    setUserRatings(prev => ({
+                        ...prev,
+                        [feedData.image_filename]: userRating
+                    }));
+                }
+            }
 
             console.log(`Loaded existing feed for ${feedData.image_filename}: ${feedData.total_ratings} ratings`);
         }
@@ -165,6 +259,24 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                 user_name: userName,
                 timestamp: new Date().toISOString()
             };
+
+            // Immediately update user's rating for this image (for heart display)
+            setUserRatings(prev => ({
+                ...prev,
+                [selectedImage.filename]: rating
+            }));
+
+            // Mark this rating as fresh so it doesn't get overwritten by server data
+            setFreshRatings(prev => new Set([...prev, selectedImage.filename]));
+
+            // Clear the fresh status after a few seconds to allow server updates
+            setTimeout(() => {
+                setFreshRatings(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(selectedImage.filename);
+                    return newSet;
+                });
+            }, 3000);
 
             sendJsonMessage(ratingData);
             // Auto-advance to next image instead of closing
@@ -289,6 +401,7 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                     <Grid item xs={6} sm={4} md={3} lg={2} key={image.id}>
                         <Box
                             sx={{
+                                position: 'relative',
                                 cursor: 'pointer',
                                 transition: 'transform 0.2s, box-shadow 0.2s',
                                 borderRadius: 2,
@@ -311,6 +424,29 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                                     width: '100%'
                                 }}
                             />
+                            {/* Heart overlay for user's favorites (4+ star ratings) */}
+                            {userRatings[image.filename] >= 4 && (
+                                <Box
+                                    sx={{
+                                        position: 'absolute',
+                                        top: 8,
+                                        right: 8,
+                                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                                        borderRadius: '50%',
+                                        padding: 0.5,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center'
+                                    }}
+                                >
+                                    <FavoriteIcon
+                                        sx={{
+                                            color: '#ff1744',
+                                            fontSize: 16
+                                        }}
+                                    />
+                                </Box>
+                            )}
                         </Box>
                     </Grid>
                 ))}

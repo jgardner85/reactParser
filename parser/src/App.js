@@ -22,7 +22,8 @@ function App() {
     connectionStatus,
     isConnected,
     lastMessage,
-    sendJsonMessage
+    sendJsonMessage,
+    messages
   } = useWebSocket(showDashboard ? undefined : null);
 
   const handleNameSubmit = (name) => {
@@ -43,6 +44,7 @@ function App() {
             lastMessage={lastMessage}
             sendJsonMessage={sendJsonMessage}
             userName={userName}
+            messages={messages}
           />
         </Container>
       )}
