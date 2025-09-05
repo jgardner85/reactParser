@@ -19,6 +19,8 @@ import http.server
 import socketserver
 import threading
 import uuid
+import shutil
+
 
 # Configure logging
 logging.basicConfig(
@@ -44,6 +46,57 @@ def get_image_files():
             image_files.append(filename)
 
     return sorted(image_files, reverse=True)
+
+
+def trash_image(image_filename, user_name=None):
+    """Move an image to the trashedPics folder - Ubuntu compatible"""
+    pics_dir = "pics"
+    trashed_dir = "trashedPics"
+
+    # Create trashed directory with explicit permissions for Ubuntu
+    if not os.path.exists(trashed_dir):
+        try:
+            os.makedirs(trashed_dir, mode=0o755)
+            logger.info(f"Created trashed directory: {trashed_dir}")
+        except PermissionError as e:
+            logger.error(f"Permission denied creating {trashed_dir}: {e}")
+            return False
+
+    # Use absolute paths to avoid any relative path issues
+    source_path = os.path.abspath(os.path.join(pics_dir, image_filename))
+    dest_path = os.path.abspath(os.path.join(trashed_dir, image_filename))
+
+    # Check if source file exists
+    if not os.path.exists(source_path):
+        logger.warning(f"Image {image_filename} not found at {source_path}")
+        return False
+
+    # Check write permissions to destination directory
+    if not os.access(trashed_dir, os.W_OK):
+        logger.error(f"No write permission to {trashed_dir}")
+        return False
+
+    try:
+        # Check if destination already exists and remove it first (Ubuntu can be picky)
+        if os.path.exists(dest_path):
+            os.remove(dest_path)
+            logger.info(f"Removed existing file at {dest_path}")
+
+        shutil.move(source_path, dest_path)
+        logger.info(
+            f"Successfully moved {image_filename} to trash (requested by {user_name})"
+        )
+        return True
+
+    except PermissionError as e:
+        logger.error(f"Permission denied moving {image_filename}: {e}")
+        return False
+    except OSError as e:
+        logger.error(f"OS error moving {image_filename}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error moving {image_filename}: {e}")
+        return False
 
 
 def get_image_ratings_file(image_filename):
@@ -222,6 +275,45 @@ async def handle_client(websocket, path):
                         response = {
                             "type": "error",
                             "message": "Missing image filename for feed request",
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                        await websocket.send(json.dumps(response))
+                elif data.get("type") == "trash_image":
+                    # Handle image trashing request
+                    image_filename = data.get("image_filename")
+                    user_name = data.get("user_name")
+
+                    if image_filename:
+                        success = trash_image(image_filename, user_name)
+
+                        # Send confirmation to the user
+                        response = {
+                            "type": "image_trashed",
+                            "success": success,
+                            "image_filename": image_filename,
+                            "user_name": user_name,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                        await websocket.send(json.dumps(response))
+
+                        # Broadcast updated file list to all connected clients
+                        if success:
+                            image_files = get_image_files()
+                            file_list_message = {
+                                "type": "file_list_update",
+                                "files": image_files,
+                                "removed_file": image_filename,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                            await broadcast_message(json.dumps(file_list_message))
+                            logger.info(
+                                f"Broadcasted updated file list - removed {image_filename}"
+                            )
+                    else:
+                        # Send error response
+                        response = {
+                            "type": "error",
+                            "message": "Missing image filename for trash request",
                             "timestamp": datetime.now().isoformat(),
                         }
                         await websocket.send(json.dumps(response))
