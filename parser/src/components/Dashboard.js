@@ -55,6 +55,7 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
     const [categories, setCategories] = useState([]); // Store available categories
     const [selectedCategory, setSelectedCategory] = useState(''); // Store selected category for current image
     const [filterCategory, setFilterCategory] = useState('all'); // Store category filter for image grid
+    const [localImageCategories, setLocalImageCategories] = useState({}); // Track locally submitted categories for immediate filter updates
     const [notifications, setNotifications] = useState([]); // Store all notifications
     const [notificationsOpen, setNotificationsOpen] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
@@ -190,6 +191,28 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                         [feedData.image_filename]: userRating
                     }));
                 }
+            }
+
+            // Update local category cache when we receive server updates (unless we have a fresh local submission)
+            if (!freshRatings.has(feedData.image_filename)) {
+                // Get the most recent category from server data
+                const serverCategory = (() => {
+                    if (!feedData.ratings_feed || feedData.ratings_feed.length === 0) {
+                        return null;
+                    }
+                    const ratingsWithCategory = feedData.ratings_feed.filter(rating => rating.category);
+                    if (ratingsWithCategory.length === 0) {
+                        return null;
+                    }
+                    const sortedRatings = ratingsWithCategory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    return sortedRatings[0].category;
+                })();
+
+                // Update local cache with server data
+                setLocalImageCategories(prev => ({
+                    ...prev,
+                    [feedData.image_filename]: serverCategory
+                }));
             }
 
             // Show toast notification for the latest rating
@@ -334,6 +357,12 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                 [selectedImage.filename]: rating
             }));
 
+            // Immediately update local category for this image (for filter updates)
+            setLocalImageCategories(prev => ({
+                ...prev,
+                [selectedImage.filename]: selectedCategory || null
+            }));
+
             // Mark this rating as fresh so it doesn't get overwritten by server data
             setFreshRatings(prev => new Set([...prev, selectedImage.filename]));
 
@@ -430,6 +459,13 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
     };
 
     const getImageCategory = (imageFilename) => {
+        // First check if we have a locally submitted category (for immediate filter updates)
+        if (localImageCategories.hasOwnProperty(imageFilename)) {
+            console.log(`Using local category for ${imageFilename}:`, localImageCategories[imageFilename]);
+            return localImageCategories[imageFilename];
+        }
+
+        // Fallback to server data
         const feed = imageRatingsFeeds[imageFilename];
         if (!feed || !feed.ratings_feed || feed.ratings_feed.length === 0) {
             return null;
