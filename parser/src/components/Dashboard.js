@@ -27,7 +27,8 @@ import {
     Star as StarIcon,
     Notifications as NotificationsIcon,
     NotificationsNone as NotificationsNoneIcon,
-    Favorite as FavoriteIcon
+    Favorite as FavoriteIcon,
+    Delete as DeleteIcon
 } from '@mui/icons-material';
 import RatingToast from './RatingToast';
 
@@ -73,6 +74,28 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
             }
         }
     }, [lastMessage, sendJsonMessage, isConnected]);
+
+    // Listen for file list updates (when images are trashed)
+    useEffect(() => {
+        if (lastMessage && lastMessage.type === 'file_list_update') {
+            const hostname = window.location.hostname;
+            const imageFiles = lastMessage.files.map((filename, index) => ({
+                id: index + 1,
+                filename: filename,
+                path: `http://${hostname}:8766/pics/${filename}`
+            }));
+            setImages(imageFiles);
+
+            // If we're currently viewing the removed image, close the dialog
+            if (selectedImage && lastMessage.removed_file === selectedImage.filename) {
+                setSelectedImage(null);
+                setRating(0);
+                setComment('');
+            }
+
+            console.log(`Image ${lastMessage.removed_file} was trashed, updated file list`);
+        }
+    }, [lastMessage, selectedImage]);
 
     // Function to extract current user's rating from a feed (by username)
     const extractUserRating = (feedData, userName) => {
@@ -289,6 +312,37 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
         openNextImage();
     };
 
+    const handleTrashImage = (imageFilename, event) => {
+        // Stop propagation to prevent opening the image dialog
+        event.stopPropagation();
+
+        if (sendJsonMessage && isConnected) {
+            // Send trash request to server
+            sendJsonMessage({
+                type: 'trash_image',
+                image_filename: imageFilename,
+                user_name: userName,
+                timestamp: new Date().toISOString()
+            });
+
+            // Immediately remove from local images list for instant feedback
+            setImages(prev => prev.filter(img => img.filename !== imageFilename));
+
+            // Clean up any ratings data for this image
+            setUserRatings(prev => {
+                const newRatings = { ...prev };
+                delete newRatings[imageFilename];
+                return newRatings;
+            });
+
+            setImageRatingsFeeds(prev => {
+                const newFeeds = { ...prev };
+                delete newFeeds[imageFilename];
+                return newFeeds;
+            });
+        }
+    };
+
     const handleToastClose = () => {
         setToastOpen(false);
     };
@@ -447,6 +501,35 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                                     />
                                 </Box>
                             )}
+
+                            {/* Trash icon overlay */}
+                            <Box
+                                sx={{
+                                    position: 'absolute',
+                                    top: 8,
+                                    left: 8,
+                                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                                    borderRadius: '50%',
+                                    padding: 0.5,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    '&:hover': {
+                                        backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                                        transform: 'scale(1.1)'
+                                    },
+                                    transition: 'all 0.2s'
+                                }}
+                                onClick={(e) => handleTrashImage(image.filename, e)}
+                            >
+                                <DeleteIcon
+                                    sx={{
+                                        color: '#f44336',
+                                        fontSize: 16
+                                    }}
+                                />
+                            </Box>
                         </Box>
                     </Grid>
                 ))}
