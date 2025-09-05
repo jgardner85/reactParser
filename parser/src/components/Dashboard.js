@@ -54,6 +54,7 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
     });
     const [categories, setCategories] = useState([]); // Store available categories
     const [selectedCategory, setSelectedCategory] = useState(''); // Store selected category for current image
+    const [filterCategory, setFilterCategory] = useState('all'); // Store category filter for image grid
     const [notifications, setNotifications] = useState([]); // Store all notifications
     const [notificationsOpen, setNotificationsOpen] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
@@ -428,6 +429,35 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
         return category ? category.color : '#607D8B';
     };
 
+    const getImageCategory = (imageFilename) => {
+        const feed = imageRatingsFeeds[imageFilename];
+        if (!feed || !feed.ratings_feed || feed.ratings_feed.length === 0) {
+            return null;
+        }
+
+        // Find the most recent rating with a category
+        const ratingsWithCategory = feed.ratings_feed.filter(rating => rating.category);
+        if (ratingsWithCategory.length === 0) {
+            return null;
+        }
+
+        // Sort by timestamp (newest first) and get the most recent category
+        const sortedRatings = ratingsWithCategory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        return sortedRatings[0].category;
+    };
+
+    const getFilteredImages = () => {
+        if (filterCategory === 'all') {
+            return images;
+        }
+
+        if (filterCategory === 'uncategorized') {
+            return images.filter(image => !getImageCategory(image.filename));
+        }
+
+        return images.filter(image => getImageCategory(image.filename) === filterCategory);
+    };
+
     const handleNotificationsOpen = () => {
         setNotificationsOpen(true);
     };
@@ -503,9 +533,57 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                 </Box>
             </Box>
 
+            {/* Category Filter */}
+            {categories.length > 0 && (
+                <Box sx={{ mb: 3 }}>
+                    <FormControl variant="outlined" sx={{ minWidth: 200 }}>
+                        <InputLabel>Filter by Category</InputLabel>
+                        <Select
+                            value={filterCategory}
+                            onChange={(e) => setFilterCategory(e.target.value)}
+                            label="Filter by Category"
+                        >
+                            <MenuItem value="all">
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Typography>All Images</Typography>
+                                </Box>
+                            </MenuItem>
+                            <MenuItem value="uncategorized">
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Box
+                                        sx={{
+                                            width: 12,
+                                            height: 12,
+                                            backgroundColor: '#9E9E9E',
+                                            borderRadius: '50%'
+                                        }}
+                                    />
+                                    <Typography>Uncategorized</Typography>
+                                </Box>
+                            </MenuItem>
+                            {categories.map((category) => (
+                                <MenuItem key={category.id} value={category.id}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <Box
+                                            sx={{
+                                                width: 12,
+                                                height: 12,
+                                                backgroundColor: category.color,
+                                                borderRadius: '50%'
+                                            }}
+                                        />
+                                        <Typography>{category.name}</Typography>
+                                    </Box>
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                </Box>
+            )}
+
             {/* Image Grid */}
             <Grid container spacing={2}>
-                {images.map((image) => (
+                {getFilteredImages().map((image) => (
                     <Grid item xs={6} sm={4} md={3} lg={2} key={image.id}>
                         <Box
                             sx={{
