@@ -43,9 +43,19 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
     const [userRatings, setUserRatings] = useState({}); // Store current user's ratings by image filename
     const [freshRatings, setFreshRatings] = useState(new Set()); // Track images with fresh ratings that shouldn't be overwritten
     const [currentUserId, setCurrentUserId] = useState(null); // Store current user's ID from server
+    const [seenImages, setSeenImages] = useState(() => {
+        // Load seen images from localStorage on component mount
+        const saved = localStorage.getItem(`seenImages_${userName}`);
+        return saved ? new Set(JSON.parse(saved)) : new Set();
+    });
     const [notifications, setNotifications] = useState([]); // Store all notifications
     const [notificationsOpen, setNotificationsOpen] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
+
+    // Save seen images to localStorage whenever it changes
+    useEffect(() => {
+        localStorage.setItem(`seenImages_${userName}`, JSON.stringify([...seenImages]));
+    }, [seenImages, userName]);
 
     // Listen for file list from WebSocket
     useEffect(() => {
@@ -232,6 +242,9 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
         setRating(0);
         setComment('');
 
+        // Mark this image as seen
+        setSeenImages(prev => new Set([...prev, image.filename]));
+
         // Request existing ratings feed for this image
         if (sendJsonMessage && isConnected) {
             sendJsonMessage({
@@ -248,7 +261,16 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
     };
 
     const getNextImage = () => {
-        if (!selectedImage) return null;
+        if (!selectedImage || !images.length) return null;
+
+        // First, try to find an unseen image
+        const unseenImages = images.filter(img => !seenImages.has(img.filename));
+        if (unseenImages.length > 0) {
+            // Return the first unseen image
+            return unseenImages[0];
+        }
+
+        // If all images have been seen, fall back to next sequential image
         const currentIndex = images.findIndex(img => img.id === selectedImage.id);
         if (currentIndex >= 0 && currentIndex < images.length - 1) {
             return images[currentIndex + 1];
@@ -262,6 +284,9 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
             setSelectedImage(nextImage);
             setRating(0);
             setComment('');
+
+            // Mark this image as seen
+            setSeenImages(prev => new Set([...prev, nextImage.filename]));
 
             // Request existing ratings feed for the next image
             if (sendJsonMessage && isConnected) {
