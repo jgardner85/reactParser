@@ -31,6 +31,44 @@ logger = logging.getLogger(__name__)
 # Store connected clients with their user IDs
 connected_clients = {}  # websocket -> user_id mapping
 
+# Store categories loaded from config
+categories = []
+
+
+def load_categories():
+    """Load categories from the categories.json config file"""
+    global categories
+    try:
+        with open("categories.json", "r") as f:
+            config = json.load(f)
+            categories = config.get("categories", [])
+            logger.info(
+                f"Loaded {len(categories)} categories: {[cat['name'] for cat in categories]}"
+            )
+            return categories
+    except FileNotFoundError:
+        logger.warning("categories.json not found, using default categories")
+        categories = [
+            {
+                "id": "general",
+                "name": "General",
+                "color": "#607D8B",
+                "description": "General photos",
+            }
+        ]
+        return categories
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing categories.json: {e}")
+        categories = [
+            {
+                "id": "general",
+                "name": "General",
+                "color": "#607D8B",
+                "description": "General photos",
+            }
+        ]
+        return categories
+
 
 def get_image_files():
     """Get list of image files from the pics directory"""
@@ -129,7 +167,13 @@ def load_image_ratings(image_filename):
 
 
 def save_image_rating(
-    user_id, image_filename, rating, comment, user_name=None, full_message=None
+    user_id,
+    image_filename,
+    rating,
+    comment,
+    user_name=None,
+    full_message=None,
+    category=None,
 ):
     """Add a new rating to an image's chronological feed"""
     ratings_data = load_image_ratings(image_filename)
@@ -140,6 +184,7 @@ def save_image_rating(
         "user_name": user_name,
         "rating": rating,
         "comment": comment,
+        "category": category,
         "timestamp": datetime.now().isoformat(),
         "full_message": full_message,  # Store the complete WebSocket message
     }
@@ -156,8 +201,10 @@ def save_image_rating(
         # User already has a rating entry - update rating but preserve/append comments
         existing_entry = ratings_data["ratings_feed"][existing_index]
 
-        # Update the rating (latest wins)
+        # Update the rating and category (latest wins)
         existing_entry["rating"] = rating
+        if category is not None:
+            existing_entry["category"] = category
         existing_entry["timestamp"] = datetime.now().isoformat()
         existing_entry["full_message"] = full_message
 
@@ -246,10 +293,11 @@ async def handle_client(websocket, path):
             "files": image_files,
             "user_id": user_id,
             "timestamp": datetime.now().isoformat(),
+            "categories": categories,
         }
         await websocket.send(json.dumps(file_list_message))
         logger.info(
-            f"Sent file list to {client_id} (User: {user_id}): {len(image_files)} images"
+            f"Sent file list to {client_id} (User: {user_id}): {len(image_files)} images, {len(categories)} categories"
         )
     except Exception as e:
         logger.error(f"Error sending file list to {client_id}: {e}")
@@ -269,10 +317,17 @@ async def handle_client(websocket, path):
                     rating = data.get("rating")
                     comment = data.get("comment", "")
                     user_name = data.get("user_name")
+                    category = data.get("category")
 
                     if image_filename and (rating or comment.strip()):
                         success = save_image_rating(
-                            user_id, image_filename, rating, comment, user_name, data
+                            user_id,
+                            image_filename,
+                            rating,
+                            comment,
+                            user_name,
+                            data,
+                            category,
                         )
 
                         # Send confirmation to the rating user
@@ -483,6 +538,9 @@ def main():
     """Start the WebSocket server"""
     host = "0.0.0.0"  # Bind to all interfaces
     port = 8765
+
+    # Load categories from config file
+    load_categories()
 
     logger.info(f"Starting WebSocket server on {host}:{port}")
     logger.info("Server features:")

@@ -20,7 +20,11 @@ import {
     Avatar,
     Divider,
     Badge,
-    Drawer
+    Drawer,
+    FormControl,
+    InputLabel,
+    Select,
+    MenuItem
 } from '@mui/material';
 import {
     Close as CloseIcon,
@@ -48,6 +52,8 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
         const saved = localStorage.getItem(`seenImages_${userName}`);
         return saved ? new Set(JSON.parse(saved)) : new Set();
     });
+    const [categories, setCategories] = useState([]); // Store available categories
+    const [selectedCategory, setSelectedCategory] = useState(''); // Store selected category for current image
     const [notifications, setNotifications] = useState([]); // Store all notifications
     const [notificationsOpen, setNotificationsOpen] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
@@ -67,6 +73,11 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                 path: `http://${hostname}:8766/pics/${filename}`
             }));
             setImages(imageFiles);
+
+            // Set categories if provided
+            if (lastMessage.categories) {
+                setCategories(lastMessage.categories);
+            }
 
             // Capture the current user's ID
             if (lastMessage.user_id) {
@@ -241,6 +252,7 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
         setSelectedImage(image);
         setRating(0);
         setComment('');
+        setSelectedCategory('');
 
         // Mark this image as seen
         setSeenImages(prev => new Set([...prev, image.filename]));
@@ -258,6 +270,7 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
         setSelectedImage(null);
         setRating(0);
         setComment('');
+        setSelectedCategory('');
     };
 
     const getNextImage = () => {
@@ -284,6 +297,7 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
             setSelectedImage(nextImage);
             setRating(0);
             setComment('');
+            setSelectedCategory('');
 
             // Mark this image as seen
             setSeenImages(prev => new Set([...prev, nextImage.filename]));
@@ -308,6 +322,7 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                 image_filename: selectedImage.filename,
                 rating: rating,
                 comment: comment,
+                category: selectedCategory,
                 user_name: userName,
                 timestamp: new Date().toISOString()
             };
@@ -401,6 +416,16 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
 
     const getAvatarText = (name) => {
         return name ? name.charAt(0).toUpperCase() : '?';
+    };
+
+    const getCategoryName = (categoryId) => {
+        const category = categories.find(cat => cat.id === categoryId);
+        return category ? category.name : categoryId;
+    };
+
+    const getCategoryColor = (categoryId) => {
+        const category = categories.find(cat => cat.id === categoryId);
+        return category ? category.color : '#607D8B';
     };
 
     const handleNotificationsOpen = () => {
@@ -622,6 +647,42 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                                 </Box>
                             </Box>
 
+                            {/* Category Selection */}
+                            {categories.length > 0 && (
+                                <Box sx={{ mb: 2 }}>
+                                    <Typography variant="h6" gutterBottom>
+                                        Categorize
+                                    </Typography>
+                                    <FormControl fullWidth variant="outlined">
+                                        <InputLabel>Select a category (optional)</InputLabel>
+                                        <Select
+                                            value={selectedCategory}
+                                            onChange={(e) => setSelectedCategory(e.target.value)}
+                                            label="Select a category (optional)"
+                                        >
+                                            <MenuItem value="">
+                                                <em>No category</em>
+                                            </MenuItem>
+                                            {categories.map((category) => (
+                                                <MenuItem key={category.id} value={category.id}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                        <Box
+                                                            sx={{
+                                                                width: 12,
+                                                                height: 12,
+                                                                backgroundColor: category.color,
+                                                                borderRadius: '50%'
+                                                            }}
+                                                        />
+                                                        {category.name}
+                                                    </Box>
+                                                </MenuItem>
+                                            ))}
+                                        </Select>
+                                    </FormControl>
+                                </Box>
+                            )}
+
                             {/* Comment Section */}
                             <Box sx={{ mb: 2 }}>
                                 <Typography variant="h6" gutterBottom>
@@ -654,6 +715,7 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                                             user_name: feedRating.user_name,
                                             rating: feedRating.rating,
                                             time_rating: feedRating.time_rating,
+                                            category: feedRating.category,
                                             timestamp: feedRating.timestamp,
                                             id: `rating-${feedRating.user_name}-${feedRating.timestamp}`
                                         });
@@ -730,6 +792,26 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                                                                             size="small"
                                                                             variant="outlined"
                                                                             color="primary"
+                                                                        />
+                                                                    )}
+                                                                    {item.category && (
+                                                                        <Chip
+                                                                            label={getCategoryName(item.category)}
+                                                                            size="small"
+                                                                            variant="outlined"
+                                                                            sx={{
+                                                                                borderColor: getCategoryColor(item.category),
+                                                                                color: getCategoryColor(item.category),
+                                                                                '&::before': {
+                                                                                    content: '""',
+                                                                                    width: 8,
+                                                                                    height: 8,
+                                                                                    borderRadius: '50%',
+                                                                                    backgroundColor: getCategoryColor(item.category),
+                                                                                    marginRight: 0.5,
+                                                                                    display: 'inline-block'
+                                                                                }
+                                                                            }}
                                                                         />
                                                                     )}
                                                                 </Box>
