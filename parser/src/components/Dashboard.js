@@ -97,11 +97,15 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
         }
     }, [lastMessage, selectedImage]);
 
-    // Function to extract current user's rating from a feed (by username)
+    // Function to extract current user's MOST RECENT rating from a feed (by username)
     const extractUserRating = (feedData, userName) => {
         if (!feedData || !feedData.ratings_feed || !userName) return null;
 
+        // Find the most recent rating by this username (feed is sorted newest first)
         const userRating = feedData.ratings_feed.find(rating => rating.user_name === userName);
+
+        console.log(`Heart check for ${feedData.image_filename}: Found rating ${userRating?.rating} for ${userName} at ${userRating?.timestamp}`);
+
         return userRating ? userRating.rating : null;
     };
 

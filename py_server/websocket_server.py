@@ -144,20 +144,24 @@ def save_image_rating(
         "full_message": full_message,  # Store the complete WebSocket message
     }
 
-    # Check if this user already rated this image (to replace their previous rating)
+    # Check if this user already rated this image (to replace their previous rating by username)
     existing_index = None
     for i, existing_rating in enumerate(ratings_data["ratings_feed"]):
-        if existing_rating["user_id"] == user_id:
+        if existing_rating["user_name"] == user_name:
             existing_index = i
             break
 
     # Either replace existing rating or append new one
     if existing_index is not None:
         ratings_data["ratings_feed"][existing_index] = rating_entry
-        logger.info(f"Updated existing rating for user {user_name} ({user_id})")
+        logger.info(
+            f"Updated existing rating for user {user_name} (replaced previous rating)"
+        )
     else:
         ratings_data["ratings_feed"].append(rating_entry)
-        logger.info(f"Added new rating for user {user_name} ({user_id})")
+        logger.info(
+            f"Added new rating for user {user_name} (first rating from this user)"
+        )
 
     # Sort by timestamp (newest first)
     ratings_data["ratings_feed"].sort(key=lambda x: x["timestamp"], reverse=True)
