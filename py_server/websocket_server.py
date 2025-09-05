@@ -151,13 +151,51 @@ def save_image_rating(
             existing_index = i
             break
 
-    # Either replace existing rating or append new one
+    # Either update existing entry (preserve comment history) or append new one
     if existing_index is not None:
-        ratings_data["ratings_feed"][existing_index] = rating_entry
+        # User already has a rating entry - update rating but preserve/append comments
+        existing_entry = ratings_data["ratings_feed"][existing_index]
+
+        # Update the rating (latest wins)
+        existing_entry["rating"] = rating
+        existing_entry["timestamp"] = datetime.now().isoformat()
+        existing_entry["full_message"] = full_message
+
+        # Handle comment history
+        if "comments" not in existing_entry:
+            existing_entry["comments"] = []
+            # Migrate old single comment to comments array
+            if existing_entry.get("comment"):
+                existing_entry["comments"].append(
+                    {
+                        "comment": existing_entry["comment"],
+                        "timestamp": existing_entry.get(
+                            "comment_timestamp", existing_entry["timestamp"]
+                        ),
+                    }
+                )
+
+        # Add new comment if provided
+        if comment.strip():
+            existing_entry["comments"].append(
+                {"comment": comment, "timestamp": datetime.now().isoformat()}
+            )
+
+        # Keep latest comment in the main field for backward compatibility
+        existing_entry["comment"] = comment
+
         logger.info(
-            f"Updated existing rating for user {user_name} (replaced previous rating)"
+            f"Updated rating for user {user_name} (rating: {rating}, total comments: {len(existing_entry['comments'])})"
         )
     else:
+        # New user rating - initialize comment history
+        if comment.strip():
+            rating_entry["comments"] = [
+                {"comment": comment, "timestamp": datetime.now().isoformat()}
+            ]
+        else:
+            rating_entry["comments"] = []
+
         ratings_data["ratings_feed"].append(rating_entry)
         logger.info(
             f"Added new rating for user {user_name} (first rating from this user)"
@@ -232,7 +270,7 @@ async def handle_client(websocket, path):
                     comment = data.get("comment", "")
                     user_name = data.get("user_name")
 
-                    if image_filename and rating:
+                    if image_filename and (rating or comment.strip()):
                         success = save_image_rating(
                             user_id, image_filename, rating, comment, user_name, data
                         )

@@ -277,7 +277,7 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
     };
 
     const handleSubmitRating = () => {
-        if (selectedImage && rating > 0) {
+        if (selectedImage && (rating > 0 || comment.trim() !== '')) {
             const ratingData = {
                 type: 'image_rating',
                 image_filename: selectedImage.filename,
@@ -613,51 +613,114 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                                 />
                             </Box>
 
-                            {/* Existing Ratings Feed */}
-                            {getCurrentImageFeed() && getCurrentImageFeed().ratings_feed.length > 0 && (
-                                <Box sx={{ mb: 2 }}>
-                                    <Divider sx={{ mb: 2 }} />
-                                    <Typography variant="h6" gutterBottom>
-                                        Comments Feed ({getCurrentImageFeed().total_ratings} ratings, avg: {getCurrentImageFeed().average_rating}/5)
-                                    </Typography>
-                                    <List dense>
-                                        {getCurrentImageFeed().ratings_feed.map((feedRating, index) => (
-                                            <ListItem key={index} alignItems="flex-start">
-                                                <ListItemAvatar>
-                                                    <Avatar sx={{ width: 32, height: 32, fontSize: '0.875rem' }}>
-                                                        {getAvatarText(feedRating.user_name)}
-                                                    </Avatar>
-                                                </ListItemAvatar>
-                                                <ListItemText
-                                                    primary={
-                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                                                            <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
-                                                                {feedRating.user_name}
-                                                            </Typography>
-                                                            <Rating
-                                                                value={feedRating.rating}
-                                                                readOnly
-                                                                size="small"
-                                                                emptyIcon={<StarIcon style={{ opacity: 0.55 }} fontSize="inherit" />}
-                                                            />
-                                                            <Typography variant="caption" color="text.secondary">
-                                                                {new Date(feedRating.timestamp).toLocaleString()}
-                                                            </Typography>
-                                                        </Box>
-                                                    }
-                                                    secondary={
-                                                        feedRating.comment && (
-                                                            <Typography variant="body2" sx={{ mt: 0.5 }}>
-                                                                {feedRating.comment}
-                                                            </Typography>
-                                                        )
-                                                    }
-                                                />
-                                            </ListItem>
-                                        ))}
-                                    </List>
-                                </Box>
-                            )}
+                            {/* Chronological Conversation Thread */}
+                            {(() => {
+                                const currentFeed = getCurrentImageFeed();
+                                if (!currentFeed || currentFeed.ratings_feed.length === 0) return null;
+
+                                // Create chronological conversation thread from all users
+                                const conversationThread = [];
+
+                                currentFeed.ratings_feed.forEach(feedRating => {
+                                    // Add rating as a conversation item if it exists
+                                    if (feedRating.rating > 0) {
+                                        conversationThread.push({
+                                            type: 'rating',
+                                            user_name: feedRating.user_name,
+                                            rating: feedRating.rating,
+                                            time_rating: feedRating.time_rating,
+                                            timestamp: feedRating.timestamp,
+                                            id: `rating-${feedRating.user_name}-${feedRating.timestamp}`
+                                        });
+                                    }
+
+                                    // Add all comments from this user to the thread
+                                    if (feedRating.comments && feedRating.comments.length > 0) {
+                                        feedRating.comments.forEach((commentObj, commentIndex) => {
+                                            conversationThread.push({
+                                                type: 'comment',
+                                                user_name: feedRating.user_name,
+                                                comment: commentObj.comment,
+                                                timestamp: commentObj.timestamp,
+                                                id: `comment-${feedRating.user_name}-${commentIndex}-${commentObj.timestamp}`
+                                            });
+                                        });
+                                    } else if (feedRating.comment) {
+                                        // Fallback for old single comment format
+                                        conversationThread.push({
+                                            type: 'comment',
+                                            user_name: feedRating.user_name,
+                                            comment: feedRating.comment,
+                                            timestamp: feedRating.timestamp,
+                                            id: `comment-${feedRating.user_name}-${feedRating.timestamp}`
+                                        });
+                                    }
+                                });
+
+                                // Sort by timestamp (newest first, reverse chronological)
+                                conversationThread.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+                                return (
+                                    <Box sx={{ mb: 2 }}>
+                                        <Divider sx={{ mb: 2 }} />
+                                        <Typography variant="h6" gutterBottom>
+                                            Conversation ({currentFeed.total_ratings} ratings, avg: {currentFeed.average_rating}/5)
+                                        </Typography>
+                                        <List dense>
+                                            {conversationThread.map((item) => (
+                                                <ListItem key={item.id} alignItems="flex-start">
+                                                    <ListItemAvatar>
+                                                        <Avatar sx={{ width: 32, height: 32, fontSize: '0.875rem' }}>
+                                                            {getAvatarText(item.user_name)}
+                                                        </Avatar>
+                                                    </ListItemAvatar>
+                                                    <ListItemText
+                                                        primary={
+                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                                                                <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+                                                                    {item.user_name}
+                                                                </Typography>
+                                                                <Typography variant="caption" color="text.secondary">
+                                                                    {new Date(item.timestamp).toLocaleString()}
+                                                                </Typography>
+                                                            </Box>
+                                                        }
+                                                        secondary={
+                                                            item.type === 'rating' ? (
+                                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                                        <Rating
+                                                                            value={item.rating}
+                                                                            readOnly
+                                                                            size="small"
+                                                                            emptyIcon={<StarIcon style={{ opacity: 0.55 }} fontSize="inherit" />}
+                                                                        />
+                                                                        <Typography variant="caption" color="text.secondary">
+                                                                            ({item.rating}/5)
+                                                                        </Typography>
+                                                                    </Box>
+                                                                    {item.time_rating && (
+                                                                        <Chip
+                                                                            label={item.time_rating}
+                                                                            size="small"
+                                                                            variant="outlined"
+                                                                            color="primary"
+                                                                        />
+                                                                    )}
+                                                                </Box>
+                                                            ) : (
+                                                                <Typography variant="body2" sx={{ mt: 0.5 }}>
+                                                                    {item.comment}
+                                                                </Typography>
+                                                            )
+                                                        }
+                                                    />
+                                                </ListItem>
+                                            ))}
+                                        </List>
+                                    </Box>
+                                );
+                            })()}
                         </DialogContent>
 
                         <DialogActions sx={{ p: 2, pt: 0, justifyContent: 'space-between' }}>
@@ -675,7 +738,7 @@ const Dashboard = ({ connectionStatus, isConnected, lastMessage, sendJsonMessage
                                 <Button
                                     onClick={handleSubmitRating}
                                     variant="contained"
-                                    disabled={rating === 0}
+                                    disabled={rating === 0 && comment.trim() === ''}
                                     color="primary"
                                 >
                                     {getNextImage() ? 'Submit & Next →' : 'Submit & Finish'}
